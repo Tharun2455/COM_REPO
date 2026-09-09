@@ -1,0 +1,1812 @@
+--------------------------------------------------------------------------------
+-- Company: <Name>
+--
+-- File: Mode_decoder.vhd
+-- File history:
+--      <Revision number>: <Date>: <Comments>
+--      <Revision number>: <Date>: <Comments>
+--      <Revision number>: <Date>: <Comments>
+--
+-- Description: 
+--
+-- <Description here>
+--
+-- Targeted device: <Family::SmartFusion2> <Die::M2S005> <Package::400 VF>
+-- Author: <Name>
+--
+--------------------------------------------------------------------------------
+
+library IEEE;
+
+use IEEE.std_logic_1164.all;
+use IEEE.STD_LOGIC_SIGNED.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+library work ;
+use work.frame_type.all ;
+
+entity Mode_decoder is
+port (
+      CLK_50MHz_I               : IN STD_LOGIC;
+      CLK_5MHz_I               : IN STD_LOGIC;
+      SYS_RESET_I               : IN STD_LOGIC;
+      PRT               : IN STD_LOGIC;
+      --PRT_status         : IN STD_LOGIC;
+      SOB               : IN STD_LOGIC;
+      RX_FRAME          : IN frame_50word_8bit;
+      FLAG_FRAME        : IN STD_LOGIC;
+      CAL_FLAG          : OUT STD_LOGIC;  
+      CMD_TYPE_NOP      : OUT STD_LOGIC_VECTOR(7 DOWNTO 0);  
+      STATUS_TYPE       : OUT STD_LOGIC_VECTOR(3 DOWNTO 0); 
+      FLASH_CMD         : OUT STD_LOGIC_VECTOR (7 DOWNTO 0);
+      FLASH_INPUT_FRAME : OUT frame_10word_8bit; 
+
+      SCLK_ADAR1_O      : OUT  std_logic;
+      CSB_ADAR1_O       : OUT  std_logic;
+      SDO_ADAR1_I       : IN  std_logic;
+      SDIO_ADAR1_IO     : INOUT  std_logic;  
+      SCLK_ADAR2_O      : OUT  std_logic;
+      CSB_ADAR2_O       : OUT  std_logic;
+      SDO_ADAR2_I       : IN  std_logic;
+      SDIO_ADAR2_IO     : INOUT  std_logic; 
+
+      FPGA_LNA_CTRL1    : OUT STD_LOGIC ;  
+      FPGA_LNA_CTRL2    : OUT STD_LOGIC ;
+      FPGA_LNA_CTRL3    : OUT STD_LOGIC ;
+      FPGA_LNA_CTRL4    : OUT STD_LOGIC ;
+      FPGA_LNA_CTRL5    : OUT STD_LOGIC ;
+      FPGA_LNA_CTRL6    : OUT STD_LOGIC ;
+      FPGA_LNA_CTRL7    : OUT STD_LOGIC ;
+      FPGA_LNA_CTRL8    : OUT STD_LOGIC ;
+
+      FPGA_PA_CTRL1     : OUT STD_LOGIC ;
+      FPGA_PA_CTRL2     : OUT STD_LOGIC ;
+      FPGA_PA_CTRL3     : OUT STD_LOGIC ;
+      FPGA_PA_CTRL4     : OUT STD_LOGIC ;
+      FPGA_PA_CTRL5     : OUT STD_LOGIC ;
+      FPGA_PA_CTRL6     : OUT STD_LOGIC ;
+      FPGA_PA_CTRL7     : OUT STD_LOGIC ;
+      FPGA_PA_CTRL8     : OUT STD_LOGIC ;
+	  
+	  FPGA_TR_ADAR1      : OUT STD_LOGIC ;
+	  FPGA_TR_ADAR2      : OUT STD_LOGIC ;
+	  FPGA_TX_LOAD_ADAR1 : OUT STD_LOGIC ;
+	  FPGA_RX_LOAD_ADAR1 : OUT STD_LOGIC ;
+	  FPGA_TX_LOAD_ADAR2 : OUT STD_LOGIC ;
+	  FPGA_RX_LOAD_ADAR2 : OUT STD_LOGIC   
+);
+end Mode_decoder;
+architecture architecture_Mode_decoder of Mode_decoder is
+component spi_wrap is  
+	port (
+			reset			:in		std_logic ;
+			CLK_50MHz_I		:in		std_logic;	---50mhz		
+			clk_5MHz		:in		std_logic;	---50mhz		
+		--	ready_flag		:in		std_logic;	---50mhz		
+			data_frame_in	:in		frame_70word_24bit;
+			word_count		:in		integer range 0 to 128;
+			data_in_flag	:in		std_logic ;
+			data_frame_out	:out	frame_10word_8bit;
+		--	data_out_flag	:out  	std_logic;
+			busy_flag		:out  	std_logic;
+----------spi--------------------------------------------------------
+			sdo      		:in	STD_LOGIC ;-----spi sdo line
+	        sdio     		:out	STD_LOGIC ;----spi sdio line
+            sclk            :out	STD_LOGIC ;
+            cs              :out	STD_LOGIC 			
+   );
+
+end component spi_wrap;
+
+
+TYPE ARRAY_PHASE IS ARRAY (0 TO 127 , 0 TO 1) OF STD_LOGIC_VECTOR (7 DOWNTO 0) ;
+SIGNAL PHASE_DATA          : ARRAY_PHASE     := (
+(x"3F", x"20"),(x"3F", x"21"),(x"3F", x"23"),(x"3F", x"24"),(x"3F", x"26"),(x"3E", x"27"),(x"3E", x"28"),(x"3D", x"2A"),
+(x"3D", x"2B"),(x"3C", x"2D"),(x"3C", x"2E"),(x"3B", x"2F"),(x"3A", x"30"),(x"33", x"31"),(x"38", x"33"),(x"37", x"34"),
+(x"36", x"35"),(x"35", x"36"),(x"34", x"37"),(x"33", x"38"),(x"32", x"38"),(x"30", x"39"),(x"2F", x"3A"),(x"2E", x"3A"),
+(x"2C", x"3B"),(x"2B", x"3C"),(x"2A", x"3C"),(x"28", x"3C"),(x"27", x"3D"),(x"25", x"3D"),(x"24", x"3D"),(x"22", x"3D"),
+(x"21", x"3D"),(x"01", x"3D"),(x"03", x"3D"),(x"04", x"3D"),(x"06", x"3D"),(x"07", x"3C"),(x"08", x"3C"),(x"0A", x"3C"),
+(x"0B", x"3B"),(x"0D", x"3A"),(x"0E", x"3A"),(x"0F", x"39"),(x"11", x"38"),(x"12", x"38"),(x"13", x"37"),(x"14", x"36"),
+(x"16", x"35"),(x"17", x"34"),(x"18", x"33"),(x"19", x"31"),(x"19", x"30"),(x"1A", x"2F"),(x"1B", x"2E"),(x"1C", x"2D"),
+(x"1C", x"2B"),(x"1D", x"2A"),(x"1E", x"28"),(x"1E", x"27"),(x"1E", x"26"),(x"1F", x"24"),(x"1F", x"23"),(x"1F", x"21"),
+(x"1F", x"20"),(x"1F", x"01"),(x"1F", x"03"),(x"1F", x"04"),(x"1F", x"06"),(x"1E", x"07"),(x"1E", x"08"),(x"1D", x"0A"),
+(x"1D", x"0B"),(x"1C", x"0D"),(x"1C", x"0E"),(x"1B", x"0F"),(x"1A", x"10"),(x"19", x"11"),(x"18", x"13"),(x"17", x"14"),
+(x"16", x"15"),(x"15", x"16"),(x"14", x"17"),(x"13", x"18"),(x"12", x"10"),(x"10", x"19"),(x"0F", x"1A"),(x"0E", x"1A"),
+(x"0C", x"1B"),(x"0B", x"1C"),(x"0A", x"1C"),(x"08", x"1C"),(x"07", x"1D"),(x"05", x"1D"),(x"04", x"1D"),(x"02", x"1D"),
+(x"01", x"1D"),(x"21", x"1D"),(x"23", x"1D"),(x"24", x"1D"),(x"26", x"1D"),(x"27", x"1C"),(x"28", x"1C"),(x"2A", x"1C"),
+(x"2B", x"1B"),(x"2D", x"1A"),(x"2E", x"1A"),(x"2F", x"19"),(x"31", x"18"),(x"32", x"18"),(x"33", x"17"),(x"34", x"16"),
+(x"36", x"15"),(x"37", x"14"),(x"38", x"13"),(x"39", x"11"),(x"39", x"10"),(x"3A", x"0F"),(x"3B", x"0E"),(x"3C", x"0D"),
+(x"3C", x"0B"),(x"3D", x"0A"),(x"3E", x"08"),(x"3E", x"07"),(x"3E", x"06"),(x"3F", x"04"),(x"3F", x"03"),(x"3F", x"01"));
+
+TYPE ATTEN_ARRAY IS ARRAY (0 TO 63) OF STD_LOGIC_VECTOR (7 DOWNTO 0) ;
+SIGNAL ATTEN_DATA_RX  : ATTEN_ARRAY     := (
+(X"FF"),(X"FC"),(X"F8"),(X"F3"),(X"EE"),(X"E8"),(X"E3"),(X"DD"),
+(X"D7"),(X"D0"),(X"CA"),(X"C4"),(X"BE"),(X"B8"),(X"B4"),(X"B0"),
+(X"AC"),(X"A8"),(X"A4"),(X"A2"),(X"9E"),(X"9C"),(X"99"),(X"97"),
+(X"95"),(X"93"),(X"91"),(X"90"),(X"8E"),(X"8D"),(X"8B"),(X"7F"),
+(X"7C"),(X"77"),(X"73"),(X"6D"),(X"68"),(X"62"),(X"5D"),(X"57"),
+(X"50"),(X"4A"),(X"44"),(X"3D"),(X"3A"),(X"33"),(X"2F"),(X"2C"),
+(X"28"),(X"25"),(X"22"),(X"1F"),(X"1C"),(X"19"),(X"17"),(X"15"),
+(X"13"),(X"12"),(X"10"),(X"0E"),(X"0C"),(X"0B"),(X"0A"),(X"09"));
+SIGNAL ATTEN_DATA_TX  : ATTEN_ARRAY     := (
+(x"FF"),(x"F6"),(x"EE"),(x"E9"),(x"E3"),(x"DD"),(x"D9"),(x"D4"),
+(x"CE"),(x"CA"),(x"C5"),(x"C1"),(x"BD"),(x"B9"),(x"B5"),(x"B2"),
+(x"AF"),(x"AC"),(x"A9"),(x"A7"),(x"A4"),(x"A2"),(x"A0"),(x"9E"),
+(x"9C"),(x"9B"),(x"99"),(x"97"),(x"96"),(x"95"),(x"94"),(x"7F"),
+(x"75"),(x"6E"),(x"68"),(x"63"),(x"5D"),(x"58"),(x"53"),(x"4E"),
+(x"49"),(x"45"),(x"41"),(x"3D"),(x"39"),(x"35"),(x"32"),(x"2F"),
+(x"2C"),(x"29"),(x"27"),(x"24"),(x"22"),(x"20"),(x"1E"),(x"1C"),
+(x"1A"),(x"19"),(x"17"),(x"16"),(x"15"),(x"13"),(x"12"),(x"11"));
+
+SIGNAL CMD_TYPE              : STD_LOGIC_VECTOR (7 DOWNTO 0) ;
+SIGNAL CHANNEL_SEL           : STD_LOGIC_VECTOR (7 DOWNTO 0) := X"00" ;
+
+SIGNAL CH1_ATTN_TX           : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH2_ATTN_TX           : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH3_ATTN_TX           : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH4_ATTN_TX           : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH5_ATTN_TX           : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH6_ATTN_TX           : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH7_ATTN_TX           : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH8_ATTN_TX           : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+
+SIGNAL CH1_ATTN_TX_CURRENT   : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH2_ATTN_TX_CURRENT   : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH3_ATTN_TX_CURRENT   : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH4_ATTN_TX_CURRENT   : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH5_ATTN_TX_CURRENT   : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH6_ATTN_TX_CURRENT   : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH7_ATTN_TX_CURRENT   : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH8_ATTN_TX_CURRENT   : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+
+SIGNAL CH1_ATTN_TX_NEXT      : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH2_ATTN_TX_NEXT      : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH3_ATTN_TX_NEXT      : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH4_ATTN_TX_NEXT      : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH5_ATTN_TX_NEXT      : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH6_ATTN_TX_NEXT      : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH7_ATTN_TX_NEXT      : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH8_ATTN_TX_NEXT      : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+
+SIGNAL CH1_PHASE_TX          : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH2_PHASE_TX          : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH3_PHASE_TX          : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH4_PHASE_TX          : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH5_PHASE_TX          : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH6_PHASE_TX          : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH7_PHASE_TX          : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH8_PHASE_TX          : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+
+SIGNAL CH1_PHASE_TX_CURRENT  : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH2_PHASE_TX_CURRENT  : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH3_PHASE_TX_CURRENT  : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH4_PHASE_TX_CURRENT  : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH5_PHASE_TX_CURRENT  : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH6_PHASE_TX_CURRENT  : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH7_PHASE_TX_CURRENT  : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH8_PHASE_TX_CURRENT  : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+
+SIGNAL CH1_PHASE_TX_NEXT     : STD_LOGIC_VECTOR (5 DOWNTO 0)  := "000000" ;
+SIGNAL CH2_PHASE_TX_NEXT     : STD_LOGIC_VECTOR (5 DOWNTO 0)  := "000000" ;
+SIGNAL CH3_PHASE_TX_NEXT     : STD_LOGIC_VECTOR (5 DOWNTO 0)  := "000000" ;
+SIGNAL CH4_PHASE_TX_NEXT     : STD_LOGIC_VECTOR (5 DOWNTO 0)  := "000000" ;
+SIGNAL CH5_PHASE_TX_NEXT     : STD_LOGIC_VECTOR (5 DOWNTO 0)  := "000000" ;
+SIGNAL CH6_PHASE_TX_NEXT     : STD_LOGIC_VECTOR (5 DOWNTO 0)  := "000000" ;
+SIGNAL CH7_PHASE_TX_NEXT     : STD_LOGIC_VECTOR (5 DOWNTO 0)  := "000000" ;
+SIGNAL CH8_PHASE_TX_NEXT     : STD_LOGIC_VECTOR (5 DOWNTO 0)  := "000000" ;
+
+SIGNAL CH1_PHASE_RX          : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH2_PHASE_RX          : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH3_PHASE_RX          : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH4_PHASE_RX          : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH5_PHASE_RX          : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH6_PHASE_RX          : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH7_PHASE_RX          : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH8_PHASE_RX          : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+
+SIGNAL CH1_PHASE_RX_CURRENT  : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH2_PHASE_RX_CURRENT  : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH3_PHASE_RX_CURRENT  : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH4_PHASE_RX_CURRENT  : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH5_PHASE_RX_CURRENT  : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH6_PHASE_RX_CURRENT  : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH7_PHASE_RX_CURRENT  : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH8_PHASE_RX_CURRENT  : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+
+SIGNAL CH1_PHASE_RX_NEXT     : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH2_PHASE_RX_NEXT     : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH3_PHASE_RX_NEXT     : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH4_PHASE_RX_NEXT     : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH5_PHASE_RX_NEXT     : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH6_PHASE_RX_NEXT     : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH7_PHASE_RX_NEXT     : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH8_PHASE_RX_NEXT     : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+
+SIGNAL CH1_ATTN_RX           : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH2_ATTN_RX           : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH3_ATTN_RX           : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH4_ATTN_RX           : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH5_ATTN_RX           : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH6_ATTN_RX           : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH7_ATTN_RX           : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH8_ATTN_RX           : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+
+SIGNAL CH1_ATTN_RX_CURRENT   : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH2_ATTN_RX_CURRENT   : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH3_ATTN_RX_CURRENT   : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH4_ATTN_RX_CURRENT   : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH5_ATTN_RX_CURRENT   : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH6_ATTN_RX_CURRENT   : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH7_ATTN_RX_CURRENT   : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH8_ATTN_RX_CURRENT   : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+
+SIGNAL CH1_ATTN_RX_NEXT      : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH2_ATTN_RX_NEXT      : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH3_ATTN_RX_NEXT      : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH4_ATTN_RX_NEXT      : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH5_ATTN_RX_NEXT      : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH6_ATTN_RX_NEXT      : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH7_ATTN_RX_NEXT      : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+SIGNAL CH8_ATTN_RX_NEXT      : STD_LOGIC_VECTOR (5 DOWNTO 0) := "000000" ;
+
+SIGNAL TX_ATTN_DATA_CH1      : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_ATTN_DATA_CH2      : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_ATTN_DATA_CH3      : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_ATTN_DATA_CH4      : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_ATTN_DATA_CH5      : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_ATTN_DATA_CH6      : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_ATTN_DATA_CH7      : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_ATTN_DATA_CH8      : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+
+SIGNAL TX_PHASEI_CH1         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_PHASEI_CH2         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_PHASEI_CH3         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_PHASEI_CH4         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_PHASEI_CH5         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_PHASEI_CH6         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_PHASEI_CH7         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_PHASEI_CH8         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+							 
+SIGNAL TX_PHASEQ_CH1         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_PHASEQ_CH2         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_PHASEQ_CH3         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_PHASEQ_CH4         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_PHASEQ_CH5         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_PHASEQ_CH6         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_PHASEQ_CH7         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL TX_PHASEQ_CH8         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+							 							 
+SIGNAL RX_ATTN_DATA_CH1      : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_ATTN_DATA_CH2      : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_ATTN_DATA_CH3      : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_ATTN_DATA_CH4      : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_ATTN_DATA_CH5      : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_ATTN_DATA_CH6      : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_ATTN_DATA_CH7      : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_ATTN_DATA_CH8      : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+
+SIGNAL RX_PHASEI_CH1         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_PHASEI_CH2         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_PHASEI_CH3         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_PHASEI_CH4         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_PHASEI_CH5         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_PHASEI_CH6         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_PHASEI_CH7         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_PHASEI_CH8         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+							 
+SIGNAL RX_PHASEQ_CH1         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_PHASEQ_CH2         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_PHASEQ_CH3         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_PHASEQ_CH4         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_PHASEQ_CH5         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_PHASEQ_CH6         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_PHASEQ_CH7         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+SIGNAL RX_PHASEQ_CH8         : STD_LOGIC_VECTOR (7 DOWNTO 0)     := (OTHERS => '0');
+
+-----------------------------SPI_SIGNAL---------------------
+signal	ready_flag_adar1_s	    :STD_LOGIC :='0';
+signal	ready_flag_adar2_s	    :STD_LOGIC :='0';
+signal 	data_frame_in_adar1_s	:frame_70word_24bit;
+signal 	data_frame_in_adar2_s	:frame_70word_24bit;
+signal	word_count_adar1_s		:integer range 0 to 127:=0;
+signal	word_count_adar2_s		:integer range 0 to 127:=0;
+signal	data_in_flag_adar1_s	:STD_LOGIC :='0';
+signal	data_in_flag_adar2_s    :STD_LOGIC :='0';
+signal	data_in_flag	    	:STD_LOGIC :='0';
+signal 	data_frame_out_adar1_s	:frame_10word_8bit;
+signal 	data_frame_out_adar2_s	:frame_10word_8bit;
+signal 	data_frame_out			:frame_10word_8bit;
+signal	data_out_flag_adar1_s	:STD_LOGIC :='0';
+signal	data_out_flag_adar2_s	:STD_LOGIC :='0';
+signal	busy_flag_adar1_s	    :STD_LOGIC :='0';
+signal	busy_flag_adar2_s	    :STD_LOGIC :='0';
+signal	busy_flag_adar1_s1	    :STD_LOGIC :='0';
+signal	busy_flag_adar1_s2	    :STD_LOGIC :='0';
+signal	busy_flag_adar1_s3	    :STD_LOGIC :='0';
+signal	busy_flag_adar1_s4	    :STD_LOGIC :='0';
+signal	busy_flag_adar2_s1	    :STD_LOGIC :='0';
+signal	busy_flag_adar2_s2      :STD_LOGIC :='0';
+signal	busy_flag_adar2_s3	    :STD_LOGIC :='0';
+signal	busy_flag_adar2_s4	    :STD_LOGIC :='0';
+signal	busy_flag_adar1_pe	    :STD_LOGIC :='0';
+signal	busy_flag_adar1_ne	    :STD_LOGIC :='0';
+signal	busy_flag_adar2_pe	    :STD_LOGIC :='0';
+signal	busy_flag_adar2_ne	    :STD_LOGIC :='0';
+signal	adar1_spi_flag	        :STD_LOGIC :='0';
+signal	adar2_spi_flag	        :STD_LOGIC :='0';
+signal	CMD_TYPE_S	            :STD_LOGIC_VECTOR(7 DOWNTO 0);-- :=0x"00";
+signal	CMD_TYPE_NOP_S	        :STD_LOGIC_VECTOR(7 DOWNTO 0);-- :=0x"00";
+signal	STATUS_TYPE_S	        :STD_LOGIC_VECTOR(3 DOWNTO 0) :=x"0";
+type	state_type	is	(s_ideal,s1,s2,s3,s4);
+signal	state_1,state_2	        :state_type;
+signal	FLASH_INPUT_FRAME_S	        :frame_10word_8bit;
+signal	FLASH_CMD_S	        : STD_LOGIC_VECTOR (7 DOWNTO 0):=x"00";
+
+constant CH01_RX_GAIN_ADDR		: std_logic_vector(15 downto 0) := x"0010";
+constant CH02_RX_GAIN_ADDR		: std_logic_vector(15 downto 0) := x"0011";	
+constant CH03_RX_GAIN_ADDR		: std_logic_vector(15 downto 0) := x"0012";	
+constant CH04_RX_GAIN_ADDR		: std_logic_vector(15 downto 0) := x"0013";
+	
+constant CH01_RX_PHASE_I_ADDR	: std_logic_vector(15 downto 0) := x"0014";
+constant CH01_RX_PHASE_Q_ADDR	: std_logic_vector(15 downto 0) := x"0015";
+constant CH02_RX_PHASE_I_ADDR	: std_logic_vector(15 downto 0) := x"0016";
+constant CH02_RX_PHASE_Q_ADDR	: std_logic_vector(15 downto 0) := x"0017";
+constant CH03_RX_PHASE_I_ADDR	: std_logic_vector(15 downto 0) := x"0018";
+constant CH03_RX_PHASE_Q_ADDR	: std_logic_vector(15 downto 0) := x"0019";
+constant CH04_RX_PHASE_I_ADDR	: std_logic_vector(15 downto 0) := x"001a";
+constant CH04_RX_PHASE_Q_ADDR	: std_logic_vector(15 downto 0) := x"001b";
+
+constant CH01_TX_GAIN_ADDR		: std_logic_vector(15 downto 0) := x"001c";
+constant CH02_TX_GAIN_ADDR		: std_logic_vector(15 downto 0) := x"001d";	
+constant CH03_TX_GAIN_ADDR		: std_logic_vector(15 downto 0) := x"001e";	
+constant CH04_TX_GAIN_ADDR		: std_logic_vector(15 downto 0) := x"001f";
+
+constant CH01_TX_PHASE_I_ADDR	: std_logic_vector(15 downto 0) := x"0020";
+constant CH01_TX_PHASE_Q_ADDR	: std_logic_vector(15 downto 0) := x"0021";
+constant CH02_TX_PHASE_I_ADDR	: std_logic_vector(15 downto 0) := x"0022";
+constant CH02_TX_PHASE_Q_ADDR	: std_logic_vector(15 downto 0) := x"0023";
+constant CH03_TX_PHASE_I_ADDR	: std_logic_vector(15 downto 0) := x"0024";
+constant CH03_TX_PHASE_Q_ADDR	: std_logic_vector(15 downto 0) := x"0025";
+constant CH04_TX_PHASE_I_ADDR	: std_logic_vector(15 downto 0) := x"0026";
+constant CH04_TX_PHASE_Q_ADDR	: std_logic_vector(15 downto 0) := x"0027";
+
+
+
+-----------------------------------------------------------
+begin
+inst_adar1: spi_wrap  
+	port map (
+			reset			=>SYS_RESET_I,
+			CLK_50MHz_I	    =>CLK_50MHZ_I,
+			clk_5MHz		=>CLK_5MHZ_I,
+		--	ready_flag		=>ready_flag_adar1_s,
+			data_frame_in	=>data_frame_in_adar1_s,
+			word_count		=>word_count_adar1_s,
+			data_in_flag	=>data_in_flag_adar1_s,
+			data_frame_out	=>data_frame_out_adar1_s,
+		--	data_out_flag	=>data_out_flag_adar1_s,
+			busy_flag		=>busy_flag_adar1_s,
+----------spi--------------------------------------------------------
+			sdo      		=>SDO_ADAR1_I,-----spi sdo line
+	        sdio     		=>SDIO_ADAR1_IO,---spi sdio line
+            sclk            =>SCLK_ADAR1_O,
+            cs              =>CSB_ADAR1_O 			
+   );
+
+inst_adar2: spi_wrap  
+	port map (
+			reset			=>SYS_RESET_I,
+			CLK_50MHz_I				=>CLK_50MHZ_I,
+			clk_5MHz		=>CLK_5MHZ_I,
+		--	ready_flag		=>ready_flag_adar2_s,
+			data_frame_in	=>data_frame_in_adar2_s,
+			word_count		=>word_count_adar2_s,
+			data_in_flag	=>data_in_flag_adar2_s,
+			data_frame_out	=>data_frame_out_adar2_s,
+		--	data_out_flag	=>data_out_flag_adar2_s,
+			busy_flag		=>busy_flag_adar2_s,
+----------spi--------------------------------------------------------
+			sdo      		=>SDO_ADAR2_I,-----spi sdo line
+	        sdio     		=>SDIO_ADAR2_IO,---spi sdio line
+            sclk            =>SCLK_ADAR2_O,
+            cs              =>CSB_ADAR2_O 			
+   );
+
+CMD_TYPE_S       <= RX_FRAME  (2) (7 DOWNTO 0) WHEN FLAG_FRAME = '1' ;
+CHANNEL_SEL      <= RX_FRAME  (5) (7 DOWNTO 0) WHEN FLAG_FRAME = '1' ;
+CMD_TYPE_NOP     <= CMD_TYPE_NOP_S ;
+STATUS_TYPE      <= STATUS_TYPE_S ;
+FLASH_CMD       <=FLASH_CMD_S;
+FLASH_INPUT_FRAME<=FLASH_INPUT_FRAME_S;
+------------------------------OPERATIONAM AND NON OPERATIONAL COMMAND IDENTIFICATION-----------------
+PROCESS (CLK_50MHz_I , SYS_RESET_I , CMD_TYPE_S) 
+BEGIN 
+IF (SYS_RESET_I = '1') THEN
+        CMD_TYPE <=X"00";
+        CMD_TYPE_NOP_s <=X"00";
+--ELSIF (CLK_50MHz_I 'EVENT AND CLK_50MHz_I = '1') THEN
+ELSE
+        IF (CMD_TYPE_S = X"01" OR CMD_TYPE_S = X"02"  OR CMD_TYPE_S = X"03" OR CMD_TYPE_S = X"04" OR CMD_TYPE_S = X"05" OR CMD_TYPE_S = X"06" OR CMD_TYPE_S = X"07" ) THEN
+            CMD_TYPE <=CMD_TYPE_S;    
+        ELSIF(CMD_TYPE_S = X"08"  ) THEN
+            CMD_TYPE_NOP_S <=CMD_TYPE_S;
+            STATUS_TYPE_S<= RX_FRAME  (5) (3 DOWNTO 0) ;
+       ELSIF(CMD_TYPE_S = X"0A"  ) THEN
+            FLASH_CMD_S <=CMD_TYPE_S;
+            
+            FOR I IN 0 TO 9 LOOP
+            FLASH_INPUT_FRAME_S(I)<= RX_FRAME(I); 
+            END LOOP;
+                   
+        ELSE
+             CMD_TYPE_NOP_S <=CMD_TYPE_NOP_S;
+             STATUS_TYPE_S <=STATUS_TYPE_S;
+        END IF;
+END IF;
+END PROCESS;
+--------------------------------------------------------------------------------------------------
+-------------------receiving uart frame to current(for calibration) and next(for dwell) regester---
+-------------------also to current register on reception of SOB SIGNAL(FOR DWELL)-------------------
+PROCESS (CLK_50MHz_I , SYS_RESET_I , CMD_TYPE , SOB) 
+BEGIN 
+   IF (SYS_RESET_I = '1') THEN
+           CH1_PHASE_RX_NEXT    	<= "000000" ;	CH2_PHASE_RX_NEXT    	<= "000000" ;	CH3_PHASE_RX_NEXT    	<= "000000" ;	CH4_PHASE_RX_NEXT    	<= "000000" ;
+           CH5_PHASE_RX_NEXT    	<= "000000" ;	CH6_PHASE_RX_NEXT    	<= "000000" ;	CH7_PHASE_RX_NEXT    	<= "000000" ; 	CH8_PHASE_RX_NEXT    	<= "000000" ;
+           CH1_PHASE_RX_CURRENT  	<= "000000" ;   CH2_PHASE_RX_CURRENT  	<= "000000" ;   CH3_PHASE_RX_CURRENT  	<= "000000" ;   CH4_PHASE_RX_CURRENT  	<= "000000" ;
+           CH5_PHASE_RX_CURRENT  	<= "000000" ;   CH6_PHASE_RX_CURRENT  	<= "000000" ;   CH7_PHASE_RX_CURRENT  	<= "000000" ;   CH8_PHASE_RX_CURRENT  	<= "000000" ;
+           CH1_PHASE_TX_NEXT     	<= "000000" ;   CH2_PHASE_TX_NEXT     	<= "000000" ;   CH3_PHASE_TX_NEXT     	<= "000000" ;   CH4_PHASE_TX_NEXT     	<= "000000" ;   
+           CH5_PHASE_TX_NEXT     	<= "000000" ;   CH6_PHASE_TX_NEXT     	<= "000000" ;   CH7_PHASE_TX_NEXT     	<= "000000" ;   CH8_PHASE_TX_NEXT     	<= "000000" ; 
+           CH1_PHASE_TX_CURRENT  	<= "000000" ;   CH2_PHASE_TX_CURRENT  	<= "000000" ;   CH3_PHASE_TX_CURRENT  	<= "000000" ;   CH4_PHASE_TX_CURRENT  	<= "000000" ;  
+           CH5_PHASE_TX_CURRENT  	<= "000000" ;   CH6_PHASE_TX_CURRENT  	<= "000000" ;   CH7_PHASE_TX_CURRENT  	<= "000000" ;   CH8_PHASE_TX_CURRENT  	<= "000000" ;  
+           CH1_ATTN_RX_CURRENT   	<= "111111" ;	CH2_ATTN_RX_CURRENT   	<= "111111" ;	CH3_ATTN_RX_CURRENT   	<= "111111" ;	CH4_ATTN_RX_CURRENT   	<= "111111" ;
+           CH5_ATTN_RX_CURRENT   	<= "111111" ;	CH6_ATTN_RX_CURRENT   	<= "111111" ;	CH7_ATTN_RX_CURRENT   	<= "111111" ;	CH8_ATTN_RX_CURRENT   	<= "111111" ;
+           CH1_ATTN_RX_NEXT      	<= "111111" ;	CH2_ATTN_RX_NEXT      	<= "111111" ;	CH3_ATTN_RX_NEXT      	<= "111111" ;	CH4_ATTN_RX_NEXT      	<= "111111" ;
+           CH5_ATTN_RX_NEXT      	<= "111111" ;	CH6_ATTN_RX_NEXT      	<= "111111" ;	CH7_ATTN_RX_NEXT      	<= "111111" ;	CH8_ATTN_RX_NEXT      	<= "111111" ;
+           CH1_ATTN_TX_CURRENT   	<= "111111" ;	CH2_ATTN_TX_CURRENT   	<= "111111" ;	CH3_ATTN_TX_CURRENT   	<= "111111" ;	CH4_ATTN_TX_CURRENT   	<= "111111" ;
+           CH5_ATTN_TX_CURRENT   	<= "111111" ;	CH6_ATTN_TX_CURRENT   	<= "111111" ;	CH7_ATTN_TX_CURRENT   	<= "111111" ;	CH8_ATTN_TX_CURRENT   	<= "111111" ;
+           CH1_ATTN_TX_NEXT      	<= "111111" ;	CH2_ATTN_TX_NEXT      	<= "111111" ;	CH3_ATTN_TX_NEXT      	<= "111111" ;	CH4_ATTN_TX_NEXT      	<= "111111" ;
+           CH5_ATTN_TX_NEXT      	<= "111111" ;	CH6_ATTN_TX_NEXT      	<= "111111" ;	CH7_ATTN_TX_NEXT      	<= "111111" ;	CH8_ATTN_TX_NEXT      	<= "111111" ;
+
+  ELSIF (CLK_50MHz_I 'EVENT AND CLK_50MHz_I = '1') THEN
+   IF (FLAG_FRAME = '1') THEN
+      IF (CMD_TYPE = X"01" & X"06") THEN                 -- DWELL MODE & Pattern
+      
+        CH1_PHASE_TX_NEXT  <= RX_FRAME (10) (5 DOWNTO 0) ;
+        CH2_PHASE_TX_NEXT  <= RX_FRAME (15) (5 DOWNTO 0) ;
+        CH3_PHASE_TX_NEXT  <= RX_FRAME (20) (5 DOWNTO 0) ;
+        CH4_PHASE_TX_NEXT  <= RX_FRAME (25) (5 DOWNTO 0) ;
+        CH5_PHASE_TX_NEXT  <= RX_FRAME (30) (5 DOWNTO 0) ;
+        CH6_PHASE_TX_NEXT  <= RX_FRAME (35) (5 DOWNTO 0) ;
+        CH7_PHASE_TX_NEXT  <= RX_FRAME (40) (5 DOWNTO 0) ;
+        CH8_PHASE_TX_NEXT  <= RX_FRAME (45) (5 DOWNTO 0) ;
+
+        CH1_ATTN_TX_NEXT   <= RX_FRAME (11) (5 DOWNTO 0) ;
+        CH2_ATTN_TX_NEXT   <= RX_FRAME (16) (5 DOWNTO 0) ;
+        CH3_ATTN_TX_NEXT   <= RX_FRAME (21) (5 DOWNTO 0) ;
+        CH4_ATTN_TX_NEXT   <= RX_FRAME (26) (5 DOWNTO 0) ;
+        CH5_ATTN_TX_NEXT   <= RX_FRAME (31) (5 DOWNTO 0) ;
+        CH6_ATTN_TX_NEXT   <= RX_FRAME (36) (5 DOWNTO 0) ;
+        CH7_ATTN_TX_NEXT   <= RX_FRAME (41) (5 DOWNTO 0) ;
+        CH8_ATTN_TX_NEXT   <= RX_FRAME (46) (5 DOWNTO 0) ;    
+                                                              
+        CH1_PHASE_RX_NEXT  <= RX_FRAME (12) (5 DOWNTO 0) ;
+        CH2_PHASE_RX_NEXT  <= RX_FRAME (17) (5 DOWNTO 0) ;
+        CH3_PHASE_RX_NEXT  <= RX_FRAME (22) (5 DOWNTO 0) ;
+        CH4_PHASE_RX_NEXT  <= RX_FRAME (27) (5 DOWNTO 0) ;
+        CH5_PHASE_RX_NEXT  <= RX_FRAME (32) (5 DOWNTO 0) ;
+        CH6_PHASE_RX_NEXT  <= RX_FRAME (37) (5 DOWNTO 0) ;
+        CH7_PHASE_RX_NEXT  <= RX_FRAME (42) (5 DOWNTO 0) ;
+        CH8_PHASE_RX_NEXT  <= RX_FRAME (47) (5 DOWNTO 0) ;
+        
+        CH1_ATTN_RX_NEXT   <= RX_FRAME (13) (5 DOWNTO 0) ;
+        CH2_ATTN_RX_NEXT   <= RX_FRAME (18) (5 DOWNTO 0) ;
+        CH3_ATTN_RX_NEXT   <= RX_FRAME (23) (5 DOWNTO 0) ;
+        CH4_ATTN_RX_NEXT   <= RX_FRAME (28) (5 DOWNTO 0) ;
+        CH5_ATTN_RX_NEXT   <= RX_FRAME (33) (5 DOWNTO 0) ;
+        CH6_ATTN_RX_NEXT   <= RX_FRAME (38) (5 DOWNTO 0) ;
+        CH7_ATTN_RX_NEXT   <= RX_FRAME (43) (5 DOWNTO 0) ;
+        CH8_ATTN_RX_NEXT   <= RX_FRAME (48) (5 DOWNTO 0) ;
+                
+  ELSIF (CMD_TYPE = X"02" ) THEN               --RX CALIBRATION
+  
+        IF (CHANNEL_SEL(0) = '1') THEN
+				CH1_PHASE_RX_CURRENT <= RX_FRAME (6) (5 DOWNTO 0) ;
+				CH1_ATTN_RX_CURRENT  <= RX_FRAME (7) (5 DOWNTO 0) ;
+		ELSE
+				CH1_PHASE_RX_CURRENT <= "000000" ;
+				CH1_ATTN_RX_CURRENT  <= "111111" ;
+		END IF;
+		IF (CHANNEL_SEL(1) = '1') THEN
+				CH2_PHASE_RX_CURRENT <= RX_FRAME (6) (5 DOWNTO 0) ;
+				CH2_ATTN_RX_CURRENT  <= RX_FRAME (7) (5 DOWNTO 0) ;
+		ELSE      
+				CH2_PHASE_RX_CURRENT <= "000000" ;
+				CH2_ATTN_RX_CURRENT  <= "111111" ;
+		END IF;
+		IF (CHANNEL_SEL(2) = '1') THEN
+				CH3_PHASE_RX_CURRENT <= RX_FRAME (6) (5 DOWNTO 0) ;
+				CH3_ATTN_RX_CURRENT  <= RX_FRAME (7) (5 DOWNTO 0) ;
+		ELSE      
+				CH3_PHASE_RX_CURRENT <= "000000" ;
+				CH3_ATTN_RX_CURRENT  <= "111111" ;
+		END IF;
+		IF (CHANNEL_SEL(3) = '1') THEN
+				CH4_PHASE_RX_CURRENT <= RX_FRAME (6) (5 DOWNTO 0) ;
+				CH4_ATTN_RX_CURRENT  <= RX_FRAME (7) (5 DOWNTO 0) ;
+		ELSE      
+				CH4_PHASE_RX_CURRENT <= "000000" ;
+				CH4_ATTN_RX_CURRENT  <= "111111" ;
+		END IF;
+		IF (CHANNEL_SEL(4) = '1') THEN
+				CH5_PHASE_RX_CURRENT <= RX_FRAME (6) (5 DOWNTO 0) ;
+				CH5_ATTN_RX_CURRENT  <= RX_FRAME (7) (5 DOWNTO 0) ;
+		ELSE      
+				CH5_PHASE_RX_CURRENT <= "000000" ;
+				CH5_ATTN_RX_CURRENT  <= "111111" ;
+		END IF;
+		IF (CHANNEL_SEL(5) = '1') THEN
+				CH6_PHASE_RX_CURRENT <= RX_FRAME (6) (5 DOWNTO 0) ;
+				CH6_ATTN_RX_CURRENT  <= RX_FRAME (7) (5 DOWNTO 0) ;
+		ELSE      
+				CH6_PHASE_RX_CURRENT <= "000000" ;
+				CH6_ATTN_RX_CURRENT  <= "111111" ;
+		END IF;
+		IF (CHANNEL_SEL(6) = '1') THEN
+				CH7_PHASE_RX_CURRENT <= RX_FRAME (6) (5 DOWNTO 0) ;
+				CH7_ATTN_RX_CURRENT  <= RX_FRAME (7) (5 DOWNTO 0) ;
+		ELSE      
+				CH7_PHASE_RX_CURRENT <= "000000" ;
+				CH7_ATTN_RX_CURRENT  <= "111111" ;
+		END IF;
+		IF (CHANNEL_SEL(7) = '1') THEN
+				CH8_PHASE_RX_CURRENT <= RX_FRAME (6) (5 DOWNTO 0) ;
+				CH8_ATTN_RX_CURRENT  <= RX_FRAME (7) (5 DOWNTO 0) ;
+		ELSE      
+				CH8_PHASE_RX_CURRENT <= "000000" ;
+				CH8_ATTN_RX_CURRENT  <= "111111" ;
+		END IF;
+
+        CH1_PHASE_TX_CURRENT <= "000000" ; 
+        CH2_PHASE_TX_CURRENT <= "000000" ; 
+        CH3_PHASE_TX_CURRENT <= "000000" ; 
+        CH4_PHASE_TX_CURRENT <= "000000" ; 
+        CH5_PHASE_TX_CURRENT <= "000000" ; 
+        CH6_PHASE_TX_CURRENT <= "000000" ; 
+        CH7_PHASE_TX_CURRENT <= "000000" ; 
+        CH8_PHASE_TX_CURRENT <= "000000" ;
+        
+        CH1_ATTN_TX_CURRENT  <= "111111" ;
+        CH2_ATTN_TX_CURRENT  <= "111111" ;
+        CH3_ATTN_TX_CURRENT  <= "111111" ;
+        CH4_ATTN_TX_CURRENT  <= "111111" ;
+        CH5_ATTN_TX_CURRENT  <= "111111" ;
+        CH6_ATTN_TX_CURRENT  <= "111111" ;
+        CH7_ATTN_TX_CURRENT  <= "111111" ;
+        CH8_ATTN_TX_CURRENT  <= "111111" ;
+ 
+  ELSIF (CMD_TYPE = X"03") THEN       -- TX CALIBRATION
+  
+  		IF (CHANNEL_SEL(0) = '1') THEN
+				CH1_PHASE_TX_CURRENT <= RX_FRAME (6) (5 DOWNTO 0) ;
+				CH1_ATTN_TX_CURRENT  <= RX_FRAME (7) (5 DOWNTO 0) ;
+		ELSE
+				CH1_PHASE_TX_CURRENT <= "000000" ;
+				CH1_ATTN_TX_CURRENT  <= "111111" ;
+		END IF;
+		IF (CHANNEL_SEL(1) = '1') THEN
+				CH2_PHASE_TX_CURRENT <= RX_FRAME (6) (5 DOWNTO 0) ;
+				CH2_ATTN_TX_CURRENT  <= RX_FRAME (7) (5 DOWNTO 0) ;
+		ELSE      
+				CH2_PHASE_TX_CURRENT <= "000000" ;
+				CH2_ATTN_TX_CURRENT  <= "111111" ;
+		END IF;
+		IF (CHANNEL_SEL(2) = '1') THEN
+				CH3_PHASE_TX_CURRENT <= RX_FRAME (6) (5 DOWNTO 0) ;
+				CH3_ATTN_TX_CURRENT  <= RX_FRAME (7) (5 DOWNTO 0) ;
+		ELSE      
+				CH3_PHASE_TX_CURRENT <= "000000" ;
+				CH3_ATTN_TX_CURRENT  <= "111111" ;
+		END IF;
+		IF (CHANNEL_SEL(3) = '1') THEN
+				CH4_PHASE_TX_CURRENT <= RX_FRAME (6) (5 DOWNTO 0) ;
+				CH4_ATTN_TX_CURRENT  <= RX_FRAME (7) (5 DOWNTO 0) ;
+		ELSE      
+				CH4_PHASE_TX_CURRENT <= "000000" ;
+				CH4_ATTN_TX_CURRENT  <= "111111" ;
+		END IF;
+		IF (CHANNEL_SEL(4) = '1') THEN
+				CH5_PHASE_TX_CURRENT <= RX_FRAME (6) (5 DOWNTO 0) ;
+				CH5_ATTN_TX_CURRENT  <= RX_FRAME (7) (5 DOWNTO 0) ;
+		ELSE      
+				CH5_PHASE_TX_CURRENT <= "000000" ;
+				CH5_ATTN_TX_CURRENT  <= "111111" ;
+		END IF;
+		IF (CHANNEL_SEL(5) = '1') THEN
+				CH6_PHASE_TX_CURRENT <= RX_FRAME (6) (5 DOWNTO 0) ;
+				CH6_ATTN_TX_CURRENT  <= RX_FRAME (7) (5 DOWNTO 0) ;
+		ELSE      
+				CH6_PHASE_TX_CURRENT <= "000000" ;
+				CH6_ATTN_TX_CURRENT  <= "111111" ;
+		END IF;
+		IF (CHANNEL_SEL(6) = '1') THEN
+				CH7_PHASE_TX_CURRENT <= RX_FRAME (6) (5 DOWNTO 0) ;
+				CH7_ATTN_TX_CURRENT  <= RX_FRAME (7) (5 DOWNTO 0) ;
+		ELSE      
+				CH7_PHASE_TX_CURRENT <= "000000" ;
+				CH7_ATTN_TX_CURRENT  <= "111111" ;
+		END IF;
+		IF (CHANNEL_SEL(7) = '1') THEN
+				CH8_PHASE_TX_CURRENT <= RX_FRAME (6) (5 DOWNTO 0) ;
+				CH8_ATTN_TX_CURRENT  <= RX_FRAME (7) (5 DOWNTO 0) ;
+		ELSE      
+				CH8_PHASE_TX_CURRENT <= "000000" ;
+				CH8_ATTN_TX_CURRENT  <= "111111" ;
+		END IF;
+        CH1_ATTN_RX_CURRENT  <= "111111" ;
+        CH2_ATTN_RX_CURRENT  <= "111111" ;
+        CH3_ATTN_RX_CURRENT  <= "111111" ;
+        CH4_ATTN_RX_CURRENT  <= "111111" ;
+        CH5_ATTN_RX_CURRENT  <= "111111" ;
+        CH6_ATTN_RX_CURRENT  <= "111111" ;
+        CH7_ATTN_RX_CURRENT  <= "111111" ;
+        CH8_ATTN_RX_CURRENT  <= "111111" ;
+        CH1_PHASE_RX_CURRENT  <= "000000" ;
+        CH2_PHASE_RX_CURRENT  <= "000000" ;
+        CH3_PHASE_RX_CURRENT  <= "000000" ;
+        CH4_PHASE_RX_CURRENT  <= "000000" ;
+        CH5_PHASE_RX_CURRENT  <= "000000" ;
+        CH6_PHASE_RX_CURRENT  <= "000000" ;
+        CH7_PHASE_RX_CURRENT  <= "000000" ;
+        CH8_PHASE_RX_CURRENT  <= "000000" ;                        
+    END IF ;
+  END IF ; 
+IF (SOB = '1' AND CMD_TYPE = X"01") THEN                      -- DWELL MODE
+ 
+        CH1_ATTN_TX_CURRENT   <= CH1_ATTN_TX_NEXT ;
+        CH2_ATTN_TX_CURRENT   <= CH2_ATTN_TX_NEXT ;
+        CH3_ATTN_TX_CURRENT   <= CH3_ATTN_TX_NEXT ;
+        CH4_ATTN_TX_CURRENT   <= CH4_ATTN_TX_NEXT ;
+        CH5_ATTN_TX_CURRENT   <= CH5_ATTN_TX_NEXT ;
+        CH6_ATTN_TX_CURRENT   <= CH6_ATTN_TX_NEXT ;
+        CH7_ATTN_TX_CURRENT   <= CH7_ATTN_TX_NEXT ;
+        CH8_ATTN_TX_CURRENT   <= CH8_ATTN_TX_NEXT ;
+        CH1_PHASE_TX_CURRENT  <= CH1_PHASE_TX_NEXT ;
+        CH2_PHASE_TX_CURRENT  <= CH2_PHASE_TX_NEXT ;
+        CH3_PHASE_TX_CURRENT  <= CH3_PHASE_TX_NEXT ;
+        CH4_PHASE_TX_CURRENT  <= CH4_PHASE_TX_NEXT ;
+        CH5_PHASE_TX_CURRENT  <= CH5_PHASE_TX_NEXT ;
+        CH6_PHASE_TX_CURRENT  <= CH6_PHASE_TX_NEXT ;
+        CH7_PHASE_TX_CURRENT  <= CH7_PHASE_TX_NEXT ;
+        CH8_PHASE_TX_CURRENT  <= CH8_PHASE_TX_NEXT ;
+
+        CH1_ATTN_RX_CURRENT   <= CH1_ATTN_RX_NEXT ;
+        CH2_ATTN_RX_CURRENT   <= CH2_ATTN_RX_NEXT ;
+        CH3_ATTN_RX_CURRENT   <= CH3_ATTN_RX_NEXT ;
+        CH4_ATTN_RX_CURRENT   <= CH4_ATTN_RX_NEXT ;
+        CH5_ATTN_RX_CURRENT   <= CH5_ATTN_RX_NEXT ;
+        CH6_ATTN_RX_CURRENT   <= CH6_ATTN_RX_NEXT ;
+        CH7_ATTN_RX_CURRENT   <= CH7_ATTN_RX_NEXT ;
+        CH8_ATTN_RX_CURRENT   <= CH8_ATTN_RX_NEXT ;
+        CH1_PHASE_RX_CURRENT  <= CH1_PHASE_RX_NEXT ;
+        CH2_PHASE_RX_CURRENT  <= CH1_PHASE_RX_NEXT ;
+        CH3_PHASE_RX_CURRENT  <= CH1_PHASE_RX_NEXT ;
+        CH4_PHASE_RX_CURRENT  <= CH1_PHASE_RX_NEXT ;
+        CH5_PHASE_RX_CURRENT  <= CH1_PHASE_RX_NEXT ;
+        CH6_PHASE_RX_CURRENT  <= CH1_PHASE_RX_NEXT ;
+        CH7_PHASE_RX_CURRENT  <= CH1_PHASE_RX_NEXT ;
+        CH8_PHASE_RX_CURRENT  <= CH1_PHASE_RX_NEXT ;
+      
+END IF;
+END IF;
+END PROCESS ;
+----------------------------------------------------------------------------------------------------------
+-----TX_RX-------PHASE_I,PHASE_Q AND ATTENUATION DATA MAPPING  --------------------------------------------
+PROCESS(CLK_50MHz_I, SYS_RESET_I)
+BEGIN
+
+    IF (SYS_RESET_I = '1') THEN
+
+        TX_ATTN_DATA_CH1    <= X"00";
+        TX_ATTN_DATA_CH2    <= X"00";
+        TX_ATTN_DATA_CH3    <= X"00";
+        TX_ATTN_DATA_CH4    <= X"00";
+        TX_ATTN_DATA_CH5    <= X"00";
+        TX_ATTN_DATA_CH6    <= X"00";
+        TX_ATTN_DATA_CH7    <= X"00";
+        TX_ATTN_DATA_CH8    <= X"00";
+
+        TX_PHASEI_CH1       <= X"00";
+        TX_PHASEI_CH2       <= X"00";
+        TX_PHASEI_CH3       <= X"00";
+        TX_PHASEI_CH4       <= X"00";
+        TX_PHASEI_CH5       <= X"00";
+        TX_PHASEI_CH6       <= X"00";
+        TX_PHASEI_CH7       <= X"00";
+        TX_PHASEI_CH8       <= X"00";
+
+        TX_PHASEQ_CH1       <= X"00";
+        TX_PHASEQ_CH2       <= X"00";
+        TX_PHASEQ_CH3       <= X"00";
+        TX_PHASEQ_CH4       <= X"00";
+        TX_PHASEQ_CH5       <= X"00";
+        TX_PHASEQ_CH6       <= X"00";
+        TX_PHASEQ_CH7       <= X"00";
+        TX_PHASEQ_CH8       <= X"00";
+
+        RX_ATTN_DATA_CH1    <= X"00";
+        RX_ATTN_DATA_CH2    <= X"00";
+        RX_ATTN_DATA_CH3    <= X"00";
+        RX_ATTN_DATA_CH4    <= X"00";
+        RX_ATTN_DATA_CH5    <= X"00";
+        RX_ATTN_DATA_CH6    <= X"00";
+        RX_ATTN_DATA_CH7    <= X"00";
+        RX_ATTN_DATA_CH8    <= X"00";
+
+        RX_PHASEI_CH1       <= X"00";
+        RX_PHASEI_CH2       <= X"00";
+        RX_PHASEI_CH3       <= X"00";
+        RX_PHASEI_CH4       <= X"00";
+        RX_PHASEI_CH5       <= X"00";
+        RX_PHASEI_CH6       <= X"00";
+        RX_PHASEI_CH7       <= X"00";
+        RX_PHASEI_CH8       <= X"00";
+                     
+        RX_PHASEQ_CH1       <= X"00";
+        RX_PHASEQ_CH2       <= X"00";
+        RX_PHASEQ_CH3       <= X"00";
+        RX_PHASEQ_CH4       <= X"00";
+        RX_PHASEQ_CH5       <= X"00";
+        RX_PHASEQ_CH6       <= X"00";
+        RX_PHASEQ_CH7       <= X"00";
+        RX_PHASEQ_CH8       <= X"00";
+
+    ELSIF RISING_EDGE (CLK_50MHz_I) THEN
+
+        TX_ATTN_DATA_CH1    <= ATTEN_DATA_TX (to_integer(unsigned(CH1_ATTN_TX_CURRENT)));
+        TX_ATTN_DATA_CH2    <= ATTEN_DATA_TX (to_integer(unsigned(CH2_ATTN_TX_CURRENT)));
+        TX_ATTN_DATA_CH3    <= ATTEN_DATA_TX (to_integer(unsigned(CH3_ATTN_TX_CURRENT)));
+        TX_ATTN_DATA_CH4    <= ATTEN_DATA_TX (to_integer(unsigned(CH4_ATTN_TX_CURRENT)));
+        TX_ATTN_DATA_CH5    <= ATTEN_DATA_TX (to_integer(unsigned(CH5_ATTN_TX_CURRENT)));
+        TX_ATTN_DATA_CH6    <= ATTEN_DATA_TX (to_integer(unsigned(CH6_ATTN_TX_CURRENT)));
+        TX_ATTN_DATA_CH7    <= ATTEN_DATA_TX (to_integer(unsigned(CH7_ATTN_TX_CURRENT)));
+        TX_ATTN_DATA_CH8    <= ATTEN_DATA_TX (to_integer(unsigned(CH8_ATTN_TX_CURRENT)));
+ 
+        TX_PHASEI_CH1       <= PHASE_DATA ((to_integer(unsigned(CH1_PHASE_TX_CURRENT))), 0);
+        TX_PHASEI_CH2       <= PHASE_DATA ((to_integer(unsigned(CH2_PHASE_TX_CURRENT))), 0); 
+        TX_PHASEI_CH3       <= PHASE_DATA ((to_integer(unsigned(CH3_PHASE_TX_CURRENT))), 0); 
+        TX_PHASEI_CH4       <= PHASE_DATA ((to_integer(unsigned(CH4_PHASE_TX_CURRENT))), 0); 
+        TX_PHASEI_CH5       <= PHASE_DATA ((to_integer(unsigned(CH5_PHASE_TX_CURRENT))), 0); 
+        TX_PHASEI_CH6       <= PHASE_DATA ((to_integer(unsigned(CH6_PHASE_TX_CURRENT))), 0); 
+        TX_PHASEI_CH7       <= PHASE_DATA ((to_integer(unsigned(CH7_PHASE_TX_CURRENT))), 0); 
+        TX_PHASEI_CH8       <= PHASE_DATA ((to_integer(unsigned(CH8_PHASE_TX_CURRENT))), 0);
+
+        TX_PHASEQ_CH1       <= PHASE_DATA ((to_integer(unsigned(CH1_PHASE_TX_CURRENT))), 1);
+        TX_PHASEQ_CH2       <= PHASE_DATA ((to_integer(unsigned(CH2_PHASE_TX_CURRENT))), 1); 
+        TX_PHASEQ_CH3       <= PHASE_DATA ((to_integer(unsigned(CH3_PHASE_TX_CURRENT))), 1); 
+        TX_PHASEQ_CH4       <= PHASE_DATA ((to_integer(unsigned(CH4_PHASE_TX_CURRENT))), 1); 
+        TX_PHASEQ_CH5       <= PHASE_DATA ((to_integer(unsigned(CH5_PHASE_TX_CURRENT))), 1); 
+        TX_PHASEQ_CH6       <= PHASE_DATA ((to_integer(unsigned(CH6_PHASE_TX_CURRENT))), 1); 
+        TX_PHASEQ_CH7       <= PHASE_DATA ((to_integer(unsigned(CH7_PHASE_TX_CURRENT))), 1); 
+        TX_PHASEQ_CH8       <= PHASE_DATA ((to_integer(unsigned(CH8_PHASE_TX_CURRENT))), 1); 
+
+        RX_ATTN_DATA_CH1    <= ATTEN_DATA_TX (to_integer(unsigned(CH1_ATTN_RX_CURRENT)));
+        RX_ATTN_DATA_CH2    <= ATTEN_DATA_TX (to_integer(unsigned(CH2_ATTN_RX_CURRENT)));
+        RX_ATTN_DATA_CH3    <= ATTEN_DATA_TX (to_integer(unsigned(CH3_ATTN_RX_CURRENT)));
+        RX_ATTN_DATA_CH4    <= ATTEN_DATA_TX (to_integer(unsigned(CH4_ATTN_RX_CURRENT)));
+        RX_ATTN_DATA_CH5    <= ATTEN_DATA_TX (to_integer(unsigned(CH5_ATTN_RX_CURRENT)));
+        RX_ATTN_DATA_CH6    <= ATTEN_DATA_TX (to_integer(unsigned(CH6_ATTN_RX_CURRENT)));
+        RX_ATTN_DATA_CH7    <= ATTEN_DATA_TX (to_integer(unsigned(CH7_ATTN_RX_CURRENT)));
+        RX_ATTN_DATA_CH8    <= ATTEN_DATA_TX (to_integer(unsigned(CH8_ATTN_RX_CURRENT)));
+
+        RX_PHASEI_CH1       <= PHASE_DATA ((to_integer(unsigned(CH1_PHASE_RX_CURRENT))), 0);
+        RX_PHASEI_CH2       <= PHASE_DATA ((to_integer(unsigned(CH2_PHASE_RX_CURRENT))), 0); 
+        RX_PHASEI_CH3       <= PHASE_DATA ((to_integer(unsigned(CH3_PHASE_RX_CURRENT))), 0); 
+        RX_PHASEI_CH4       <= PHASE_DATA ((to_integer(unsigned(CH4_PHASE_RX_CURRENT))), 0); 
+        RX_PHASEI_CH5       <= PHASE_DATA ((to_integer(unsigned(CH5_PHASE_RX_CURRENT))), 0); 
+        RX_PHASEI_CH6       <= PHASE_DATA ((to_integer(unsigned(CH6_PHASE_RX_CURRENT))), 0); 
+        RX_PHASEI_CH7       <= PHASE_DATA ((to_integer(unsigned(CH7_PHASE_RX_CURRENT))), 0); 
+        RX_PHASEI_CH8       <= PHASE_DATA ((to_integer(unsigned(CH8_PHASE_RX_CURRENT))), 0); 
+
+        RX_PHASEQ_CH1       <= PHASE_DATA ((to_integer(unsigned(CH1_PHASE_RX_CURRENT))), 1);
+        RX_PHASEQ_CH2       <= PHASE_DATA ((to_integer(unsigned(CH2_PHASE_RX_CURRENT))), 1); 
+        RX_PHASEQ_CH3       <= PHASE_DATA ((to_integer(unsigned(CH3_PHASE_RX_CURRENT))), 1); 
+        RX_PHASEQ_CH4       <= PHASE_DATA ((to_integer(unsigned(CH4_PHASE_RX_CURRENT))), 1); 
+        RX_PHASEQ_CH5       <= PHASE_DATA ((to_integer(unsigned(CH5_PHASE_RX_CURRENT))), 1); 
+        RX_PHASEQ_CH6       <= PHASE_DATA ((to_integer(unsigned(CH6_PHASE_RX_CURRENT))), 1); 
+        RX_PHASEQ_CH7       <= PHASE_DATA ((to_integer(unsigned(CH7_PHASE_RX_CURRENT))), 1); 
+        RX_PHASEQ_CH8       <= PHASE_DATA ((to_integer(unsigned(CH8_PHASE_RX_CURRENT))), 1); 
+
+    END IF;
+
+END PROCESS;
+-------------------------------------------------------------------------------------------------
+------------------------SPI BUSY FOLG +VE AND -VE edge detection---------
+PROCESS (CLK_50MHz_I , SYS_RESET_I,busy_flag_adar1_s )    
+BEGIN
+                    if (SYS_RESET_I = '1') then
+                        busy_flag_adar1_s1<='0';
+                        busy_flag_adar1_s2<='0';
+                        busy_flag_adar1_s3<='0';
+                        busy_flag_adar1_s4<='0';
+                   elsif (CLK_50MHz_I'event and CLK_50MHz_I = '0') then
+                        busy_flag_adar1_s1 <=busy_flag_adar1_s;
+                        busy_flag_adar1_s2 <=busy_flag_adar1_s1;
+                        busy_flag_adar1_s3 <=busy_flag_adar1_s2;
+                        busy_flag_adar1_s4 <=busy_flag_adar1_s4;
+                   end if; 
+                   
+                   if (SYS_RESET_I = '1') then
+                        busy_flag_adar2_s1<='0';
+                        busy_flag_adar2_s2<='0';
+                        busy_flag_adar2_s3<='0';
+                        busy_flag_adar2_s4<='0';
+                   elsif (CLK_50MHz_I'event and CLK_50MHz_I = '0') then
+                        busy_flag_adar2_s1 <=busy_flag_adar2_s;
+                        busy_flag_adar2_s2 <=busy_flag_adar2_s1;
+                        busy_flag_adar2_s3 <=busy_flag_adar2_s2;
+                        busy_flag_adar2_s4 <=busy_flag_adar2_s4;
+                   end if;
+end process;
+---------------------------------------------------------------------------------------------------------------------------  
+------------------SPI BUSY FOLG +VE AND -VE edge detection----------------------------------------------------------------- 
+busy_flag_adar1_pe <= busy_flag_adar1_s1 and (not busy_flag_adar1_s2);
+busy_flag_adar1_ne <= busy_flag_adar1_s2 and (not busy_flag_adar1_s1); 
+busy_flag_adar2_pe <= busy_flag_adar2_s1 and (not busy_flag_adar2_s2);
+busy_flag_adar2_ne <= busy_flag_adar2_s2 and (not busy_flag_adar2_s1);               
+----------------------------------------------------------------------------------------------------------------------------                 
+-------ADAR1 SPI COMMUNICATION CHECK (SPI LINE IS BUSY OR NOT)----and start of spi comm based on spi is busy or not---------
+adar1_spi_competion_ceck	:process (CLK_50MHz_I , SYS_RESET_I,busy_flag_adar1_ne,busy_flag_adar1_pe )
+begin
+	if (SYS_RESET_I = '1') then
+			adar1_spi_flag<= '0';
+			state_1		<=s_ideal;
+    elsif(CLK_50MHz_I'event and CLK_50MHz_I = '1') then
+	   case state_1 is  
+			when s_ideal =>
+			             adar1_spi_flag<= '0';
+				     if(busy_flag_adar1_ne = '1') then
+                          adar1_spi_flag<= '1';
+	                      state_1<=s1;
+                     else
+                          adar1_spi_flag<= '0';
+                          state_1<=s_ideal;
+                    end if;                  
+            when s1 =>
+                        adar1_spi_flag<= '1';
+				     if(busy_flag_adar1_pe = '1') then
+                          adar1_spi_flag<= '0';
+	                      state_1<=s_ideal;
+                     else
+                          adar1_spi_flag<= '1';
+                          state_1<=s1;
+                    end if;
+			when others=> 			           			
+	                state_1<=s_ideal;
+	   end case;	
+	end if;     
+end process;
+----------------------------------------------------------------------------------------------------------------------------                 
+-------ADAR2 SPI COMMUNICATION CHECK (SPI LINE IS BUSY OR NOT)----and start of spi comm based on spi is busy or not---------
+adar2_spi_competion_ceck	:process (CLK_50MHz_I , SYS_RESET_I,busy_flag_adar2_ne,busy_flag_adar2_pe )
+begin
+	if (SYS_RESET_I = '1') then
+			adar2_spi_flag<= '0';
+			state_2		<=s_ideal;
+    elsif(CLK_50MHz_I'event and CLK_50MHz_I = '1') then
+	   case state_2 is  
+			when s_ideal =>
+			             adar2_spi_flag<= '0';
+				     if(busy_flag_adar2_ne = '1') then
+                          adar2_spi_flag<= '1';
+	                      state_2<=s1;
+                     else
+                          adar2_spi_flag<= '0';
+                          state_2<=s_ideal;
+                    end if;                  
+            when s1 =>
+                        adar2_spi_flag<= '1';
+				     if(busy_flag_adar2_pe = '1') then
+                          adar2_spi_flag<= '0';
+	                      state_2<=s_ideal;
+                     else
+                          adar2_spi_flag<= '1';
+                          state_2<=s1;
+                    end if;
+			when others=> 			           			
+	                state_2<=s_ideal;
+	   end case;	
+	end if;     
+end process;	               
+----------------------------------------------------------------------------------------------------------------------------                 
+---------------------spi data generation for adar in different modes of operation------------------------
+PROCESS (CLK_50MHz_I , SYS_RESET_I , CMD_TYPE , CHANNEL_SEL , SOB, busy_flag_adar1_s,busy_flag_adar2_s,FLAG_FRAME)    
+BEGIN
+IF (SYS_RESET_I = '1') THEN
+    data_frame_in_adar1_s     <= (OTHERS => X"000000") ;
+    data_frame_in_adar2_s     <= (OTHERS => X"000000") ;
+ELSIF (CLK_50MHz_I 'EVENT AND CLK_50MHz_I = '1') THEN
+ CASE CMD_TYPE IS
+  WHEN X"02" =>            -- RX_CALIBRATION  
+
+
+----------------------- adar 1 register settings --------------------------------------------------------------------    
+          data_frame_in_adar1_s (0)   <= "0" & "0000" & "000" & X"00" & X"81" ;    -- soft reset
+          data_frame_in_adar1_s (1)   <= "0" & "0000" & "000" & X"00" & X"18" ;    -- sdo active
+          data_frame_in_adar1_s (2)   <= "0" & "0000" & "000" & X"38" & X"60" ;    -- use spi for channel settings 
+          data_frame_in_adar1_s (3)   <= "0" & "0000" & "000" & X"31" & X"20" ;    -- switch control for tr source
+          data_frame_in_adar1_s (4)   <= "0" & "0000" & "000" & X"34" & X"05" ;    -- Low bias settings
+          data_frame_in_adar1_s (5)   <= "0" & "0000" & "000" & X"35" & X"1A" ;     
+          data_frame_in_adar1_s (6)   <= "0" & "0000" & "000" & X"31" & X"20" ;    -- RX ENABLED
+          data_frame_in_adar1_s (11)  <= "0" & "0000" & "000" & X"28" & X"01" ;    -- loading working registers
+-------------------------adar 2 register settings ------------------------------------------------------------------------
+          data_frame_in_adar2_s (0)   <= "0" & "0000" & "000" & X"00" & X"81" ;    -- soft reset
+          data_frame_in_adar2_s (1)   <= "0" & "0000" & "000" & X"00" & X"18" ;    -- sdo active
+          data_frame_in_adar2_s (2)   <= "0" & "0000" & "000" & X"38" & X"60" ;    -- use spi for channel settings 
+          data_frame_in_adar2_s (3)   <= "0" & "0000" & "000" & X"31" & X"20" ;    -- switch control for tr source
+          data_frame_in_adar2_s (4)   <= "0" & "0000" & "000" & X"34" & X"05" ;    -- Low bias settings
+          data_frame_in_adar2_s (5)   <= "0" & "0000" & "000" & X"35" & X"1A" ;     
+          data_frame_in_adar2_s (6)   <= "0" & "0000" & "000" & X"31" & X"20" ;    -- RX ENABLED
+          data_frame_in_adar2_s (11)  <= "0" & "0000" & "000" & X"28" & X"01" ;    -- loading working registers
+        
+
+    IF (CHANNEL_SEL (0) = '1') THEN
+          data_frame_in_adar1_s (7)    <= "0" & "0000" & "000"  & X"2E" & X"47" ;          -- CHANNEL 1 ENABLE REMAINING CHANNEL OFF    
+          data_frame_in_adar1_s (8)    <=  CH01_RX_GAIN_ADDR    & RX_ATTN_DATA_CH1 ;
+          data_frame_in_adar1_s (9)    <=  CH01_RX_PHASE_Q_ADDR & RX_PHASEQ_CH1 ;
+          data_frame_in_adar1_s (10)   <=  CH01_RX_PHASE_I_ADDR & RX_PHASEI_CH1 ;
+
+          word_count_adar1_s<= 11;
+
+        if(busy_flag_adar1_s = '0') then
+            data_in_flag_adar1_s<= '1';
+        else
+            data_in_flag_adar1_s<= '0';           
+        end if;
+          
+    ELSIF (CHANNEL_SEL (1) = '1') THEN
+
+          data_frame_in_adar1_s (7)    <= "0" & "0000" & "000" & X"2E" & X"27" ;           -- CHANNEL 2 ENABLE REMAINING CHANNEL 0FF
+          data_frame_in_adar1_s (8)    <= CH02_RX_GAIN_ADDR     & RX_ATTN_DATA_CH2 ;
+          data_frame_in_adar1_s (9)    <= CH02_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH2 ;
+          data_frame_in_adar1_s (10)   <= CH02_RX_PHASE_I_ADDR  & RX_PHASEI_CH2 ;
+
+    
+          word_count_adar1_s<= 11;
+        if(busy_flag_adar1_s = '0') then
+            data_in_flag_adar1_s<= '1';
+        else
+            data_in_flag_adar1_s<= '0';           
+        end if;
+
+    ELSIF (CHANNEL_SEL (2) = '1') THEN
+  
+          data_frame_in_adar1_s (7)     <= "0" & "0000" & "000" & X"2E" & X"17" ;           -- CHANNEL 3 ENABLE REMAINING CHANNEL 0FF
+          data_frame_in_adar1_s (8)     <= CH03_RX_GAIN_ADDR    & RX_ATTN_DATA_CH3 ;
+          data_frame_in_adar1_s (9)     <= CH03_RX_PHASE_Q_ADDR & RX_PHASEQ_CH3 ;
+          data_frame_in_adar1_s (10)    <= CH03_RX_PHASE_I_ADDR & RX_PHASEI_CH3 ;
+
+          word_count_adar1_s<= 11;
+        if(busy_flag_adar1_s = '0') then
+            data_in_flag_adar1_s<= '1';
+        else
+            data_in_flag_adar1_s<= '0';           
+        end if;
+
+    ELSIF (CHANNEL_SEL (3) = '1') THEN
+
+          data_frame_in_adar1_s (7)     <= "0" & "0000" & "000" & X"2E" & X"0F" ;           -- CHANNEL 4 ENABLE REMAINING CHANNEL OFF
+          data_frame_in_adar1_s (8)     <= CH04_RX_GAIN_ADDR    & RX_ATTN_DATA_CH4 ;
+          data_frame_in_adar1_s (9)     <= CH04_RX_PHASE_Q_ADDR & RX_PHASEQ_CH4 ;
+          data_frame_in_adar1_s (10)    <= CH04_RX_PHASE_I_ADDR & RX_PHASEI_CH4 ; 
+ 
+          word_count_adar1_s<= 11;
+        if(busy_flag_adar1_s = '0') then
+            data_in_flag_adar1_s<= '1';
+        else
+            data_in_flag_adar1_s<= '0';           
+        end if;
+
+     ELSIF (CHANNEL_SEL (4) = '1') THEN                                      --  CHANNEL 5 ENABLE REMAINING CHANNEL OFF
+
+          data_frame_in_adar2_s (7)    <= "0" & "0000" & "000" & X"2E" & X"47" ;       
+          data_frame_in_adar2_s (8)    <= CH01_RX_GAIN_ADDR     & RX_ATTN_DATA_CH5 ;
+          data_frame_in_adar2_s (9)    <= CH01_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH5 ;
+          data_frame_in_adar2_s (10)   <= CH01_RX_PHASE_I_ADDR  & RX_PHASEI_CH5 ;
+   
+          word_count_adar2_s<= 11;
+        if(busy_flag_adar2_s = '0') then
+            data_in_flag_adar2_s<= '1';
+        else
+            data_in_flag_adar2_s<= '0';           
+        end if;
+
+    ELSIF (CHANNEL_SEL (5) = '1') THEN                                      -- CHANNEL 6 ENABLE REMAINING CHANNEL OFF
+
+          data_frame_in_adar2_s (7)    <= "0" & "0000" & "000" & X"2E" & X"27" ;    
+          data_frame_in_adar2_s (8)    <= CH02_RX_GAIN_ADDR    & RX_ATTN_DATA_CH6 ;
+          data_frame_in_adar2_s (9)    <= CH02_RX_PHASE_Q_ADDR & RX_PHASEQ_CH6 ;
+          data_frame_in_adar2_s (10)   <= CH02_RX_PHASE_I_ADDR & RX_PHASEI_CH6 ;
+
+          word_count_adar2_s<= 11;
+          if(busy_flag_adar2_s = '0') then
+            data_in_flag_adar2_s<= '1';
+          else
+            data_in_flag_adar2_s<= '0';           
+          end if;
+
+    ELSIF (CHANNEL_SEL (6) = '1') THEN                                      -- CHANNEL 7 ENABLE REMAINING CHANNEL OFF
+  
+          data_frame_in_adar2_s (7)     <= "0" & "0000" & "000" & X"2E" & X"17" ;
+          data_frame_in_adar2_s (8)     <= CH03_RX_GAIN_ADDR     & RX_ATTN_DATA_CH7 ;
+          data_frame_in_adar2_s (9)     <= CH03_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH7 ;
+          data_frame_in_adar2_s (10)    <= CH03_RX_PHASE_I_ADDR  & RX_PHASEI_CH7 ;
+
+          word_count_adar2_s<= 11;
+        if(busy_flag_adar2_s = '0') then
+            data_in_flag_adar2_s<= '1';
+        else
+            data_in_flag_adar2_s<= '0';           
+        end if;
+
+    ELSIF (CHANNEL_SEL (7) = '1') THEN                                       -- CHANNEL 8 ENABLE REMAINING CHANNEL OFF
+
+          data_frame_in_adar2_s (7)     <= "0" & "0000" & "000" & X"2E" & X"0F" ;
+          data_frame_in_adar2_s (8)     <= CH04_RX_GAIN_ADDR    & RX_ATTN_DATA_CH8 ;
+          data_frame_in_adar2_s (9)     <= CH04_RX_PHASE_Q_ADDR & RX_PHASEQ_CH8 ;
+          data_frame_in_adar2_s (10)    <= CH04_RX_PHASE_I_ADDR & RX_PHASEI_CH8 ;
+ 
+          word_count_adar2_s<= 11;
+        if(busy_flag_adar2_s = '0') then
+            data_in_flag_adar2_s<= '1';
+        else
+            data_in_flag_adar2_s<= '0';           
+        end if;
+
+    END IF;
+WHEN X"03"     =>                     -- TX CALIBRATION
+           
+          data_frame_in_adar1_s (0)   <= "0" & "0000" & "000" & X"00" & X"81" ;    -- soft reset
+          data_frame_in_adar1_s (1)   <= "0" & "0000" & "000" & X"00" & X"18" ;    -- sdo active
+          data_frame_in_adar1_s (2)   <= "0" & "0000" & "000" & X"38" & X"60" ;    -- use spi for channel settings 
+          data_frame_in_adar1_s (3)   <= "0" & "0000" & "000" & X"31" & X"42" ;    -- switch control for user tr pin
+          data_frame_in_adar1_s (4)   <= "0" & "0000" & "000" & X"36" & X"16" ;    -- nominal bias settings
+          data_frame_in_adar1_s (5)   <= "0" & "0000" & "000" & X"37" & X"06" ;     
+          data_frame_in_adar1_s (6)   <= "0" & "0000" & "000" & X"31" & X"42" ;    -- TX ENABLED
+          data_frame_in_adar1_s (11)  <= "0" & "0000" & "000" & X"28" & X"02" ;    -- loading working registers
+
+          data_frame_in_adar2_s (0)   <= "0" & "0000" & "000" & X"00" & X"81" ;    -- soft reset
+          data_frame_in_adar2_s (1)   <= "0" & "0000" & "000" & X"00" & X"18" ;    -- sdo active
+          data_frame_in_adar2_s (2)   <= "0" & "0000" & "000" & X"38" & X"60" ;    -- use spi for channel settings 
+          data_frame_in_adar2_s (3)   <= "0" & "0000" & "000" & X"31" & X"42" ;    -- switch control for user tr pin
+          data_frame_in_adar2_s (4)   <= "0" & "0000" & "000" & X"36" & X"16" ;    -- nominal bias settings
+          data_frame_in_adar2_s (5)   <= "0" & "0000" & "000" & X"37" & X"06" ;     
+          data_frame_in_adar2_s (6)   <= "0" & "0000" & "000" & X"31" & X"42" ;    -- TX ENABLED
+          data_frame_in_adar2_s (11)  <= "0" & "0000" & "000" & X"28" & X"02" ;    -- loading working registers
+
+    IF (CHANNEL_SEL (0) = '1') THEN
+
+          data_frame_in_adar1_s (7)    <= "0" & "0001" & "000" & X"2F" & X"47" ;
+          data_frame_in_adar1_s (8)    <= CH01_TX_GAIN_ADDR     & TX_ATTN_DATA_CH1 ;
+          data_frame_in_adar1_s (9)    <= CH01_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH1 ;
+          data_frame_in_adar1_s (10)   <= CH01_TX_PHASE_I_ADDR  & TX_PHASEI_CH1 ;
+
+          word_count_adar1_s<= 11;
+        if(busy_flag_adar1_s = '0') then
+            data_in_flag_adar1_s<= '1';
+        else
+            data_in_flag_adar1_s<= '0';           
+        end if;
+
+    ELSIF (CHANNEL_SEL (1) = '1') THEN
+
+          data_frame_in_adar1_s (7)    <= "0" & "0000" & "000" & X"2F" & X"27" ;
+          data_frame_in_adar1_s (8)    <= CH02_TX_GAIN_ADDR     & TX_ATTN_DATA_CH2 ;
+          data_frame_in_adar1_s (9)    <= CH02_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH2 ;
+          data_frame_in_adar1_s (10)   <= CH02_TX_PHASE_I_ADDR  & TX_PHASEI_CH2 ;
+
+          word_count_adar1_s<= 11;
+        if(busy_flag_adar1_s = '0') then
+            data_in_flag_adar1_s<= '1';
+        else
+            data_in_flag_adar1_s<= '0';           
+        end if;
+
+    ELSIF (CHANNEL_SEL (2) = '1') THEN
+
+          data_frame_in_adar1_s (7)    <= "0" & "0000" & "000" & X"2F" & X"17" ;
+          data_frame_in_adar1_s (8)    <= CH03_TX_GAIN_ADDR     & TX_ATTN_DATA_CH3 ;
+          data_frame_in_adar1_s (9)    <= CH03_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH3 ;
+          data_frame_in_adar1_s (10)   <= CH03_TX_PHASE_I_ADDR  & TX_PHASEI_CH3 ;
+
+          word_count_adar1_s<= 11;
+        if(busy_flag_adar1_s = '0') then
+            data_in_flag_adar1_s<= '1';
+        else
+            data_in_flag_adar1_s<= '0';           
+        end if;
+
+    ELSIF (CHANNEL_SEL (3) = '1') THEN
+
+          data_frame_in_adar1_s (7)    <= "0" & "0000" & "000" & X"2F" & X"0F" ;
+          data_frame_in_adar1_s (8)    <= CH04_TX_GAIN_ADDR    & TX_ATTN_DATA_CH4 ;
+          data_frame_in_adar1_s (9)    <= CH04_TX_PHASE_Q_ADDR & TX_PHASEQ_CH4 ;
+          data_frame_in_adar1_s (10)   <= CH04_TX_PHASE_I_ADDR & TX_PHASEI_CH4 ;
+
+          word_count_adar1_s<= 11;
+        if(busy_flag_adar1_s = '0') then
+            data_in_flag_adar1_s<= '1';
+        else
+            data_in_flag_adar1_s<= '0';           
+        end if;
+     
+    ELSIF (CHANNEL_SEL (4) = '1') THEN
+
+          data_frame_in_adar2_s (7)    <= "0" & "0000" & "000" & X"2F" & X"47" ;
+          data_frame_in_adar2_s (8)    <= CH01_TX_GAIN_ADDR    & TX_ATTN_DATA_CH5 ;
+          data_frame_in_adar2_s (9)    <= CH01_TX_PHASE_Q_ADDR & TX_PHASEQ_CH5 ;
+          data_frame_in_adar2_s (10)   <= CH01_TX_PHASE_I_ADDR & TX_PHASEI_CH5 ;
+
+          word_count_adar2_s<= 11;
+        if(busy_flag_adar2_s = '0') then
+            data_in_flag_adar2_s<= '1';
+        else
+            data_in_flag_adar2_s<= '0';           
+        end if;
+    ELSIF (CHANNEL_SEL (5) = '1') THEN
+
+          data_frame_in_adar2_s (7)    <= "0" & "0000" & "000" & X"2F" & X"27" ;
+          data_frame_in_adar2_s (8)    <= CH02_TX_GAIN_ADDR      & TX_ATTN_DATA_CH6 ;
+          data_frame_in_adar2_s (9)    <= CH02_TX_PHASE_Q_ADDR   & TX_PHASEQ_CH6 ;
+          data_frame_in_adar2_s (10)   <= CH02_TX_PHASE_I_ADDR   & TX_PHASEI_CH6 ;
+
+          word_count_adar2_s<= 11;
+        if(busy_flag_adar2_s = '0') then
+            data_in_flag_adar2_s<= '1';
+        else
+            data_in_flag_adar2_s<= '0';           
+        end if;
+    ELSIF (CHANNEL_SEL (6) = '1') THEN
+
+          data_frame_in_adar2_s (7)    <= "0" & "0000" & "000" & X"2F" & X"17" ;
+          data_frame_in_adar2_s (8)    <= CH03_TX_GAIN_ADDR     & TX_ATTN_DATA_CH7 ;
+          data_frame_in_adar2_s (9)    <= CH03_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH7 ;
+          data_frame_in_adar2_s (10)   <= CH03_TX_PHASE_I_ADDR  & TX_PHASEI_CH7 ;
+
+          word_count_adar2_s<= 11;
+        if(busy_flag_adar2_s = '0') then
+            data_in_flag_adar2_s<= '1';
+        else
+            data_in_flag_adar2_s<= '0';           
+        end if;
+    ELSIF (CHANNEL_SEL (7) = '1') THEN
+
+          data_frame_in_adar2_s (7)    <= "0" & "0000" & "000" & X"2F" & X"0F" ;
+          data_frame_in_adar2_s (8)    <= CH04_TX_GAIN_ADDR     & TX_ATTN_DATA_CH8 ;
+          data_frame_in_adar2_s (9)    <= CH04_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH8 ;
+          data_frame_in_adar2_s (10)   <= CH04_TX_PHASE_I_ADDR  & TX_PHASEI_CH8 ;
+
+          word_count_adar2_s<= 11;
+        if(busy_flag_adar2_s = '0') then
+            data_in_flag_adar2_s<= '1';
+        else
+            data_in_flag_adar2_s<= '0';           
+        end if;         
+      END IF;
+
+
+WHEN X"04" =>                        -----------RX ISOLATION
+            
+        data_frame_in_adar1_s (0)  <=  "0" & "0000" & "000" & X"00" & X"81" ; --- soft reset
+        data_frame_in_adar1_s (1)  <=  "0" & "0000" & "000" & X"00" & X"18" ; --- sdo active
+        data_frame_in_adar1_s (1)  <=  "0" & "0000" & "000" & X"38" & X"60" ; --- USE SPI FOR CHANNEL SETTINGS
+        data_frame_in_adar1_s (2)  <=  "0" & "0000" & "000" & X"31" & X"04" ; --- SWITCH CONTROL FOR TR PIN EITHER TX ENABLE OR RX ENABLE
+        data_frame_in_adar1_s (3)  <=  "0" & "0000" & "000" & X"2E" & X"00" ; --- RX_ENABLE REGISTER LOW
+
+        data_frame_in_adar2_s (0)  <=  "0" & "0000" & "000" & X"00" & X"81" ; --- soft reset
+        data_frame_in_adar2_s (1)  <=  "0" & "0000" & "000" & X"00" & X"18" ; --- sdo active
+        data_frame_in_adar2_s (1)  <=  "0" & "0000" & "000" & X"38" & X"60" ; ---USE SPI FOR CHANNEL SETTINGS
+        data_frame_in_adar2_s (2)  <=  "0" & "0000" & "000" & X"31" & X"04" ; --- SWITCH CONTROL FOR TR PIN EITHER TX ENABLE OR RX ENABLE
+        data_frame_in_adar2_s (3)  <=  "0" & "0000" & "000" & X"2E" & X"00" ; --- RX_ENABLE REGISTER LOW
+ 
+          word_count_adar1_s<= 4;
+          word_count_adar2_s<= 4;
+        if(busy_flag_adar1_s = '0') then
+            data_in_flag_adar1_s<= '1';
+        else
+            data_in_flag_adar1_s<= '0'; 
+        end if ;
+        if(busy_flag_adar2_s = '0') then
+            data_in_flag_adar2_s<= '1';
+        else
+            data_in_flag_adar2_s<= '0'; 
+        end if ;
+
+
+WHEN X"05" =>    
+                    ---------TX ISOLATION
+    IF (PRT = '1') THEN 
+        data_frame_in_adar1_s (0)  <=  "0" & "0001" & "000" & X"00" & X"18" ; ---USE SDO READBACK
+        data_frame_in_adar1_s (1)  <=  "0" & "0001" & "000" & X"38" & X"60" ; ---USE SPI FOR CHANNEL SETTINGS
+        data_frame_in_adar1_s (2)  <=  "0" & "0001" & "000" & X"31" & X"04" ; --- SWITCH CONTROL FOR TR PIN EITHER SPI OR SWITCH CONTROL
+        data_frame_in_adar1_s (3)  <=  "0" & "0001" & "000" & X"2F" & X"00" ; --- TX_ENABLE REGISTER LOW
+
+        data_frame_in_adar2_s (0)  <=  "0" & "0001" & "000" & X"00" & X"18" ; ---USE SDO READBACK
+        data_frame_in_adar2_s (1)  <=  "0" & "0001" & "000" & X"38" & X"60" ; ---USE SPI FOR CHANNEL SETTINGS
+        data_frame_in_adar2_s (2)  <=  "0" & "0001" & "000" & X"31" & X"04" ; --- SWITCH CONTROL FOR TR PIN EITHER SPI OR SWITCH CONTROL
+        data_frame_in_adar2_s (3)  <=  "0" & "0001" & "000" & X"2F" & X"00" ; --- TX_ENABLE REGISTER LOW
+
+          word_count_adar1_s<= 4;
+          word_count_adar2_s<= 4;
+        if(busy_flag_adar1_s = '0') then
+            data_in_flag_adar1_s<= '1';
+        else
+            data_in_flag_adar1_s<= '0'; 
+        end if ;
+        if(busy_flag_adar2_s = '0') then
+            data_in_flag_adar2_s<= '1';
+        else
+            data_in_flag_adar2_s<= '0'; 
+        end if ;
+    end if ;
+
+
+WHEN X"06"    =>                  ---- RX PATTERN
+
+        data_frame_in_adar1_s (0) <= "0" & "0001" & "000" & X"00" & X"18" ; -- USE SDO READBACK 
+        data_frame_in_adar1_s (1) <= "0" & "0001" & "000" & X"38" & X"60" ; -- USE SPI FOR CHANNEL SETTINGS
+        data_frame_in_adar1_s (2) <= "0" & "0001" & "000" & X"31" & X"04" ; -- SWITCH CONTROL FOR TR PIN EITHER SPI OR SWITCH CONTROL
+        data_frame_in_adar1_s (3) <= "0" & "0001" & "000" & X"2E" & X"FF" ; -- ALL CHANNELS ENABLE FOR RECEIVE
+
+        data_frame_in_adar2_s (0) <= "0" & "0001" & "000" & X"00" & X"18" ; -- USE SDO READBACK 
+        data_frame_in_adar2_s (1) <= "0" & "0001" & "000" & X"38" & X"60" ; -- USE SPI FOR CHANNEL SETTINGS
+        data_frame_in_adar2_s (2) <= "0" & "0001" & "000" & X"31" & X"04" ; -- SWITCH CONTROL FOR TR PIN EITHER SPI OR SWITCH CONTROL
+        data_frame_in_adar2_s (3) <= "0" & "0001" & "000" & X"2E" & X"FF" ; -- ALL CHANNELS ENABLE FOR RECEIVE
+     
+        data_frame_in_adar1_s (4) <= CH01_RX_GAIN_ADDR     & RX_ATTN_DATA_CH1 ;
+        data_frame_in_adar1_s (5) <= CH01_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH1 ;
+        data_frame_in_adar1_s (6) <= CH01_RX_PHASE_I_ADDR  & RX_PHASEI_CH1 ;
+        
+        data_frame_in_adar1_s (7) <= CH02_RX_GAIN_ADDR     & RX_ATTN_DATA_CH2 ;
+        data_frame_in_adar1_s (8) <= CH02_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH2 ;
+        data_frame_in_adar1_s (9) <= CH02_RX_PHASE_I_ADDR  & RX_PHASEI_CH2 ;
+
+        data_frame_in_adar1_s (10) <= CH03_RX_GAIN_ADDR    & RX_ATTN_DATA_CH3 ;
+        data_frame_in_adar1_s (11) <= CH03_RX_PHASE_Q_ADDR & RX_PHASEQ_CH3 ;
+        data_frame_in_adar1_s (12) <= CH03_RX_PHASE_I_ADDR & RX_PHASEI_CH3 ;
+
+        data_frame_in_adar1_s (13) <= CH04_RX_GAIN_ADDR     & RX_ATTN_DATA_CH4 ;
+        data_frame_in_adar1_s (14) <= CH04_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH4 ;
+        data_frame_in_adar1_s (15) <= CH04_RX_PHASE_I_ADDR  & RX_PHASEI_CH4 ;
+			
+		data_frame_in_adar2_s (16) <= CH01_RX_GAIN_ADDR     & RX_ATTN_DATA_CH5 ;
+        data_frame_in_adar2_s (17) <= CH01_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH5 ;
+        data_frame_in_adar2_s (18) <= CH01_RX_PHASE_I_ADDR  & RX_PHASEI_CH5 ;
+					
+        data_frame_in_adar2_s (19) <= CH02_RX_GAIN_ADDR     & RX_ATTN_DATA_CH6 ;
+        data_frame_in_adar2_s (20) <= CH02_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH6 ;
+        data_frame_in_adar2_s (21) <= CH02_RX_PHASE_I_ADDR  & RX_PHASEI_CH6 ;
+					
+        data_frame_in_adar2_s (22) <= CH03_RX_GAIN_ADDR     & RX_ATTN_DATA_CH7 ;
+        data_frame_in_adar2_s (23) <= CH03_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH7 ;
+        data_frame_in_adar2_s (24) <= CH03_RX_PHASE_I_ADDR  & RX_PHASEI_CH7 ;
+					
+        data_frame_in_adar2_s (25) <= CH04_RX_GAIN_ADDR     & RX_ATTN_DATA_CH8 ;
+        data_frame_in_adar2_s (26) <= CH04_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH8 ;
+        data_frame_in_adar2_s (27) <= CH04_RX_PHASE_I_ADDR  & RX_PHASEI_CH8 ;
+		
+		data_frame_in_adar1_s (28) <= "0" & "0001" & "000" & X"2F" & X"00" ;
+		data_frame_in_adar2_s (28) <= "0" & "0001" & "000" & X"2F" & X"00" ;
+        
+          word_count_adar1_s<= 29;
+          word_count_adar2_s<= 29;
+        if(busy_flag_adar1_s = '0') then
+            data_in_flag_adar1_s<= '1';
+        else
+            data_in_flag_adar1_s<= '0'; 
+        end if ;
+        if(busy_flag_adar2_s = '0') then
+            data_in_flag_adar2_s<= '1';
+        else
+            data_in_flag_adar2_s<= '0'; 
+        end if ;
+
+WHEN X"07" =>       ----------TX PATTERN
+
+        data_frame_in_adar1_s (0) <= "0" & "0001" & "000" & X"00" & X"18" ; -- USE SDO READBACK 
+        data_frame_in_adar1_s (1) <= "0" & "0001" & "000" & X"38" & X"60" ; -- USE SPI FOR CHANNEL SETTINGS
+        data_frame_in_adar1_s (2) <= "0" & "0001" & "000" & X"31" & X"04" ; -- SWITCH CONTROL FOR TR PIN EITHER SPI OR SWITCH CONTROL
+        data_frame_in_adar1_s (3) <= "0" & "0001" & "000" & X"2F" & X"FF" ; -- ALL CHANNELS ENABLE FOR RECEIVE
+
+        data_frame_in_adar2_s (0) <= "0" & "0001" & "000" & X"00" & X"18" ; -- USE SDO READBACK 
+        data_frame_in_adar2_s (1) <= "0" & "0001" & "000" & X"38" & X"60" ; -- USE SPI FOR CHANNEL SETTINGS
+        data_frame_in_adar2_s (2) <= "0" & "0001" & "000" & X"31" & X"04" ; -- SWITCH CONTROL FOR TR PIN EITHER SPI OR SWITCH CONTROL
+        data_frame_in_adar2_s (3) <= "0" & "0001" & "000" & X"2F" & X"FF" ; -- ALL CHANNELS ENABLE FOR RECEIVE
+
+        data_frame_in_adar1_s (4)  <= CH01_TX_GAIN_ADDR     & TX_ATTN_DATA_CH1 ;
+        data_frame_in_adar1_s (5)  <= CH01_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH1 ;
+        data_frame_in_adar1_s (6)  <= CH01_TX_PHASE_I_ADDR  & TX_PHASEI_CH1 ;
+        
+        data_frame_in_adar1_s (7) <= CH02_TX_GAIN_ADDR     & TX_ATTN_DATA_CH2 ;
+        data_frame_in_adar1_s (8) <= CH02_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH2 ;
+        data_frame_in_adar1_s (9) <= CH02_TX_PHASE_I_ADDR  & TX_PHASEI_CH2 ;
+							 
+        data_frame_in_adar1_s (10) <= CH03_TX_GAIN_ADDR     & TX_ATTN_DATA_CH3 ;
+        data_frame_in_adar1_s (11) <= CH03_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH3 ;
+        data_frame_in_adar1_s (12) <= CH03_TX_PHASE_I_ADDR  & TX_PHASEI_CH3 ;         
+							 
+        data_frame_in_adar1_s (13) <= CH04_TX_GAIN_ADDR     & TX_ATTN_DATA_CH4 ;
+        data_frame_in_adar1_s (14) <= CH04_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH4 ;
+        data_frame_in_adar1_s (15) <= CH04_TX_PHASE_I_ADDR  & TX_PHASEI_CH4 ;
+		
+		data_frame_in_adar2_s (16)  <= CH01_TX_GAIN_ADDR     & TX_ATTN_DATA_CH5 ;
+        data_frame_in_adar2_s (17)  <= CH01_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH5 ;
+        data_frame_in_adar2_s (18)  <= CH01_TX_PHASE_I_ADDR  & TX_PHASEI_CH5 ;
+					
+        data_frame_in_adar2_s (19) <= CH02_TX_GAIN_ADDR     & TX_ATTN_DATA_CH6 ;
+        data_frame_in_adar2_s (20) <= CH02_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH6 ;
+        data_frame_in_adar2_s (21) <= CH02_TX_PHASE_I_ADDR  & TX_PHASEI_CH6 ;
+					
+        data_frame_in_adar2_s (22) <= CH03_TX_GAIN_ADDR     & TX_ATTN_DATA_CH7 ;
+        data_frame_in_adar2_s (23) <= CH03_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH7 ;
+        data_frame_in_adar2_s (24) <= CH03_TX_PHASE_I_ADDR  & TX_PHASEI_CH7 ;
+					
+        data_frame_in_adar2_s (25) <= CH04_TX_GAIN_ADDR     & TX_ATTN_DATA_CH8 ;
+        data_frame_in_adar2_s (26) <= CH04_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH8 ;
+        data_frame_in_adar2_s (27) <= CH04_TX_PHASE_I_ADDR  & TX_PHASEI_CH8 ;
+		
+		data_frame_in_adar1_s (28) <= "0" & "0001" & "000" & X"2E" & X"00" ;
+		data_frame_in_adar2_s (28) <= "0" & "0001" & "000" & X"2E" & X"00" ;
+
+          word_count_adar1_s<= 29;
+          word_count_adar2_s<= 29;
+        if(busy_flag_adar1_s = '0') then
+            data_in_flag_adar1_s<= '1';
+        else
+            data_in_flag_adar1_s<= '0'; 
+        end if ;
+        if(busy_flag_adar2_s = '0') then
+            data_in_flag_adar2_s<= '1';
+        else
+            data_in_flag_adar2_s<= '0'; 
+        end if ;
+
+WHEN X"01"    =>                  --DWELL MODE
+
+       IF (SOB = '1') THEN  
+          word_count_adar1_s<= 33;
+          word_count_adar2_s<= 33;
+          
+          if(busy_flag_adar1_s = '0') then
+            data_in_flag_adar1_s<= '1';
+          else
+            data_in_flag_adar1_s<= '0';           
+          end if;
+          
+          if(busy_flag_adar2_s = '0') then
+            data_in_flag_adar2_s<= '1';
+          else
+            data_in_flag_adar2_s<= '0';           
+          end if;
+--------------------------------------adar1_data----------------------------------------------------------
+		  data_frame_in_adar1_s(0)   <= "0" & "0001" & "000" & X"00" & X"18" ;    -- USE SDO READBACK
+          data_frame_in_adar1_s(1)   <= "0" & "0001" & "000" & X"38" & X"60" ;    -- USE SPI FOR CHANNEL SETTINGS
+          data_frame_in_adar1_s(2)   <= "0" & "0001" & "000" & X"34" & X"08" ;    -- NOMINAL  
+          data_frame_in_adar1_s(3)   <= "0" & "0001" & "000" & X"35" & X"55" ;    -- BIAS 
+          data_frame_in_adar1_s(4)   <= "0" & "0001" & "000" & X"36" & X"2D" ;    -- SETTINGS
+          data_frame_in_adar1_s(5)   <= "0" & "0001" & "000" & X"37" & X"06" ;    -- FOR RECEIVER & TRANSMITTER
+          data_frame_in_adar1_s(6)   <= "0" & "0001" & "000" & X"31" & X"04" ;    -- TX/RX ENABLED
+          data_frame_in_adar1_s(31)  <= "0" & "0001" & "000" & X"30" & X"20" ;   --  bias current
+          data_frame_in_adar1_s(32)  <= "0" & "0001" & "000" & X"28" & X"02" ;   -- LOADING WORKING REGISTER TX
+		---------------------------------tx_data_adar2--------------- 
+		
+		  data_frame_in_adar1_s (7)  <= CH01_TX_GAIN_ADDR     & TX_ATTN_DATA_CH1 ;
+          data_frame_in_adar1_s (8)  <= CH01_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH1 ;
+          data_frame_in_adar1_s (9)  <= CH01_TX_PHASE_I_ADDR  & TX_PHASEI_CH1 ;
+          
+          data_frame_in_adar1_s (10) <= CH02_TX_GAIN_ADDR     & TX_ATTN_DATA_CH2 ;
+          data_frame_in_adar1_s (11) <= CH02_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH2 ;
+          data_frame_in_adar1_s (12) <= CH02_TX_PHASE_I_ADDR  & TX_PHASEI_CH2 ;
+									 
+          data_frame_in_adar1_s (13) <= CH03_TX_GAIN_ADDR     & TX_ATTN_DATA_CH3 ;
+          data_frame_in_adar1_s (14) <= CH03_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH3 ;
+          data_frame_in_adar1_s (15) <= CH03_TX_PHASE_I_ADDR  & TX_PHASEI_CH3 ;         
+									 
+          data_frame_in_adar1_s (16) <= CH04_TX_GAIN_ADDR     & TX_ATTN_DATA_CH4 ;
+          data_frame_in_adar1_s (17) <= CH04_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH4 ;
+          data_frame_in_adar1_s (18) <= CH04_TX_PHASE_I_ADDR  & TX_PHASEI_CH4 ;
+		---------------------------------rx_data_adar1---------------------------------------
+          data_frame_in_adar1_s (19) <= CH01_RX_GAIN_ADDR     & RX_ATTN_DATA_CH1 ;
+          data_frame_in_adar1_s (20) <= CH01_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH1 ;
+          data_frame_in_adar1_s (21) <= CH01_RX_PHASE_I_ADDR  & RX_PHASEI_CH1 ;
+
+          data_frame_in_adar1_s (22) <= CH02_RX_GAIN_ADDR     & RX_ATTN_DATA_CH2 ;
+          data_frame_in_adar1_s (23) <= CH02_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH2 ;
+          data_frame_in_adar1_s (24) <= CH02_RX_PHASE_I_ADDR  & RX_PHASEI_CH2 ;
+
+          data_frame_in_adar1_s (25) <= CH03_RX_GAIN_ADDR     & RX_ATTN_DATA_CH3 ;
+          data_frame_in_adar1_s (26) <= CH03_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH3 ;
+          data_frame_in_adar1_s (27) <= CH03_RX_PHASE_I_ADDR  & RX_PHASEI_CH3 ;
+
+          data_frame_in_adar1_s (28) <= CH04_RX_GAIN_ADDR     & RX_ATTN_DATA_CH4 ;
+          data_frame_in_adar1_s (29) <= CH04_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH4 ;
+          data_frame_in_adar1_s (30) <= CH04_RX_PHASE_I_ADDR  & RX_PHASEI_CH4 ; 
+ ------------------------------------------adar2--------------------------------------------------------------                 
+          data_frame_in_adar2_s(0)   <= "0" & "0001" & "000" & X"00" & X"18" ;    -- USE SDO READBACK
+          data_frame_in_adar2_s(1)   <= "0" & "0001" & "000" & X"38" & X"60" ;    -- USE SPI FOR CHANNEL SETTINGS
+          data_frame_in_adar2_s(2)   <= "0" & "0001" & "000" & X"34" & X"08" ;    -- NOMINAL  
+          data_frame_in_adar2_s(3)   <= "0" & "0001" & "000" & X"35" & X"55" ;    -- BIAS 
+          data_frame_in_adar2_s(4)   <= "0" & "0001" & "000" & X"36" & X"2D" ;    -- SETTINGS
+          data_frame_in_adar2_s(5)   <= "0" & "0001" & "000" & X"37" & X"06" ;    -- FOR RECEIVER & TRANSMITTER
+          data_frame_in_adar2_s(6)   <= "0" & "0001" & "000" & X"31" & X"90" ;    -- TX/RX ENABLED
+          data_frame_in_adar2_s(31)  <= "0" & "0001" & "000" & X"28" & X"01" ;   -- LOADING WORKING REGISTER RX 
+          data_frame_in_adar2_s(32)  <= "0" & "0001" & "000" & X"28" & X"02" ;   -- LOADING WORKING REGISTER TX 
+		---------------------------------tx_data_adar2---------------------------------------
+          data_frame_in_adar2_s (7)  <= CH01_TX_GAIN_ADDR     & TX_ATTN_DATA_CH5 ;
+          data_frame_in_adar2_s (8)  <= CH01_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH5 ;
+          data_frame_in_adar2_s (9)  <= CH01_TX_PHASE_I_ADDR  & TX_PHASEI_CH5 ;
+							
+          data_frame_in_adar2_s (10) <= CH02_TX_GAIN_ADDR     & TX_ATTN_DATA_CH6 ;
+          data_frame_in_adar2_s (11) <= CH02_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH6 ;
+          data_frame_in_adar2_s (12) <= CH02_TX_PHASE_I_ADDR  & TX_PHASEI_CH6 ;
+							
+          data_frame_in_adar2_s (13) <= CH03_TX_GAIN_ADDR     & TX_ATTN_DATA_CH7 ;
+          data_frame_in_adar2_s (14) <= CH03_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH7 ;
+          data_frame_in_adar2_s (15) <= CH03_TX_PHASE_I_ADDR  & TX_PHASEI_CH7 ;
+							
+          data_frame_in_adar2_s (16) <= CH04_TX_GAIN_ADDR     & TX_ATTN_DATA_CH8 ;
+          data_frame_in_adar2_s (17) <= CH04_TX_PHASE_Q_ADDR  & TX_PHASEQ_CH8 ;
+          data_frame_in_adar2_s (18) <= CH04_TX_PHASE_I_ADDR  & TX_PHASEI_CH8 ;
+		---------------------------------rx_data_adar2---------------------------------------
+          data_frame_in_adar2_s (19) <= CH01_RX_GAIN_ADDR     & RX_ATTN_DATA_CH5 ;
+          data_frame_in_adar2_s (20) <= CH01_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH5 ;
+          data_frame_in_adar2_s (21) <= CH01_RX_PHASE_I_ADDR  & RX_PHASEI_CH5 ;
+							
+          data_frame_in_adar2_s (22) <= CH02_RX_GAIN_ADDR     & RX_ATTN_DATA_CH6 ;
+          data_frame_in_adar2_s (23) <= CH02_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH6 ;
+          data_frame_in_adar2_s (24) <= CH02_RX_PHASE_I_ADDR  & RX_PHASEI_CH6 ;
+							
+          data_frame_in_adar2_s (25) <= CH03_RX_GAIN_ADDR     & RX_ATTN_DATA_CH7 ;
+          data_frame_in_adar2_s (26) <= CH03_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH7 ;
+          data_frame_in_adar2_s (27) <= CH03_RX_PHASE_I_ADDR  & RX_PHASEI_CH7 ;
+							
+          data_frame_in_adar2_s (28) <= CH04_RX_GAIN_ADDR     & RX_ATTN_DATA_CH8 ;
+          data_frame_in_adar2_s (29) <= CH04_RX_PHASE_Q_ADDR  & RX_PHASEQ_CH8 ;
+          data_frame_in_adar2_s (30) <= CH04_RX_PHASE_I_ADDR  & RX_PHASEI_CH8 ;       
+          
+    END IF;
+ 
+ WHEN OTHERS  =>
+
+            data_frame_in_adar1_s      <= (others =>x"000000");
+            data_frame_in_adar1_s      <= (others =>x"000000");
+END CASE ;
+
+--END IF;
+END IF;
+END PROCESS ;  
+---------------------------------------------------------------------------------------------------------------------------
+-----------control signal generation for each channenl in differebt modes of operation------------------------------------------
+PROCESS (CLK_50MHz_I , SYS_RESET_I , PRT ) 
+BEGIN
+        IF (SYS_RESET_I = '1') THEN ---OR PRT = '0') THEN
+            FPGA_LNA_CTRL1   <= '0';
+            FPGA_LNA_CTRL2   <= '0';
+            FPGA_LNA_CTRL3   <= '0';
+            FPGA_LNA_CTRL4   <= '0';
+            FPGA_LNA_CTRL5   <= '0';
+            FPGA_LNA_CTRL6   <= '0';
+            FPGA_LNA_CTRL7   <= '0';
+            FPGA_LNA_CTRL8   <= '0';
+            FPGA_PA_CTRL1    <= '0';
+            FPGA_PA_CTRL2    <= '0';
+            FPGA_PA_CTRL3    <= '0';
+            FPGA_PA_CTRL4    <= '0';
+            FPGA_PA_CTRL5    <= '0';
+            FPGA_PA_CTRL6    <= '0';
+            FPGA_PA_CTRL7    <= '0';
+            FPGA_PA_CTRL8    <= '0';
+            FPGA_TX_LOAD_ADAR1   <= '0' ;
+            FPGA_TX_LOAD_ADAR2   <= '0' ;
+            FPGA_RX_LOAD_ADAR1   <= '0' ;
+            FPGA_RX_LOAD_ADAR2   <= '0' ;
+       ELSIF (CLK_50MHz_I 'EVENT AND CLK_50MHz_I = '1') THEN
+       IF (SOB = '1') THEN
+            FPGA_TX_LOAD_ADAR1   <= '1' ;
+            FPGA_TX_LOAD_ADAR2   <= '1' ;
+            FPGA_RX_LOAD_ADAR1   <= '1' ;
+            FPGA_RX_LOAD_ADAR2   <= '1' ;
+       END IF ;
+
+CASE CMD_TYPE IS
+     WHEN X"01"  =>             --DWELL MODE
+        if(adar1_spi_flag = '1' and adar2_spi_flag = '1') then  --------------from here adar1 and adar2 can be seprated
+           IF (PRT = '1') THEN   -----------------THIS MUST BE IMPLEMENTED
+             FPGA_LNA_CTRL1   <= NOT PRT ;
+             FPGA_LNA_CTRL2   <= NOT PRT ;
+             FPGA_LNA_CTRL3   <= NOT PRT ;
+             FPGA_LNA_CTRL4   <= NOT PRT ;
+             FPGA_LNA_CTRL5   <= NOT PRT ;
+             FPGA_LNA_CTRL6   <= NOT PRT ;
+             FPGA_LNA_CTRL7   <= NOT PRT ;
+             FPGA_LNA_CTRL8   <= NOT PRT ;
+             FPGA_TR_ADAR1    <= NOT PRT ;
+             FPGA_TR_ADAR1    <= NOT PRT ;
+             FPGA_PA_CTRL1    <= PRT ;
+             FPGA_PA_CTRL2    <= PRT ;
+             FPGA_PA_CTRL3    <= PRT ;
+             FPGA_PA_CTRL4    <= PRT ;
+             FPGA_PA_CTRL5    <= PRT ;
+             FPGA_PA_CTRL6    <= PRT ;
+             FPGA_PA_CTRL7    <= PRT ;
+             FPGA_PA_CTRL8    <= PRT ;
+             FPGA_TR_ADAR1    <= PRT ;
+             FPGA_TR_ADAR1    <= PRT ;
+           ELSE 
+           
+             FPGA_LNA_CTRL1   <= '0' ;
+             FPGA_LNA_CTRL2   <= '0' ;
+             FPGA_LNA_CTRL3   <= '0' ;
+             FPGA_LNA_CTRL4   <= '0' ;
+             FPGA_LNA_CTRL5   <= '0' ;
+             FPGA_LNA_CTRL6   <= '0' ;
+             FPGA_LNA_CTRL7   <= '0' ;
+             FPGA_LNA_CTRL8   <= '0' ;
+             FPGA_PA_CTRL1    <= '0' ;
+             FPGA_PA_CTRL2    <= '0' ;
+             FPGA_PA_CTRL3    <= '0' ;
+             FPGA_PA_CTRL4    <= '0' ;
+             FPGA_PA_CTRL5    <= '0' ;
+             FPGA_PA_CTRL6    <= '0' ;
+             FPGA_PA_CTRL7    <= '0' ;
+             FPGA_PA_CTRL8    <= '0' ;
+             FPGA_TR_ADAR1    <= '0' ;
+             FPGA_TR_ADAR1    <= '0' ;
+        end if;
+    end if ;  
+   WHEN X"02"  =>                       -- RX CALIBRATION
+            FPGA_PA_CTRL1    <= '0' ;
+            FPGA_PA_CTRL2    <= '0' ;
+            FPGA_PA_CTRL3    <= '0' ;
+            FPGA_PA_CTRL4    <= '0' ;
+            FPGA_PA_CTRL5    <= '0' ;
+            FPGA_PA_CTRL6    <= '0' ;
+            FPGA_PA_CTRL7    <= '0' ;
+            FPGA_PA_CTRL8    <= '0' ;
+            FPGA_TR_ADAR1    <= '1' ;
+            FPGA_TR_ADAR2    <= '1' ;
+        IF (CHANNEL_SEL(0) = '1' and adar1_spi_flag = '1') THEN
+            FPGA_LNA_CTRL1  <= '1' ;
+        ELSE 
+            FPGA_LNA_CTRL1  <= '0' ;
+        END IF;
+        IF (CHANNEL_SEL(1) = '1' and adar1_spi_flag = '1') THEN
+            FPGA_LNA_CTRL2  <= '1' ;
+        ELSE 
+            FPGA_LNA_CTRL2  <= '0' ;
+        END IF;
+        IF (CHANNEL_SEL(2) = '1' and adar1_spi_flag = '1') THEN
+            FPGA_LNA_CTRL3  <= '1' ;
+        ELSE 
+            FPGA_LNA_CTRL3 <= '0' ;
+        END IF;
+        IF (CHANNEL_SEL(3) = '1' and adar1_spi_flag = '1') THEN
+            FPGA_LNA_CTRL4  <= '1' ;
+        ELSE 
+            FPGA_LNA_CTRL4  <= '0' ;
+        END IF;
+        IF (CHANNEL_SEL(4) = '1' and adar2_spi_flag = '1') THEN
+            FPGA_LNA_CTRL5  <= '1' ;
+        ELSE 
+            FPGA_LNA_CTRL5 <= '0' ;
+        END IF;
+        IF (CHANNEL_SEL(5) = '1' and adar2_spi_flag = '1') THEN
+            FPGA_LNA_CTRL6  <= '1' ;
+        ELSE 
+            FPGA_LNA_CTRL6  <= '0' ;
+        END IF;
+        IF (CHANNEL_SEL(6) = '1' and adar2_spi_flag = '1') THEN
+            FPGA_LNA_CTRL7  <= '1' ;
+        ELSE 
+            FPGA_LNA_CTRL7  <= '0' ;
+        END IF;
+        IF (CHANNEL_SEL(7) = '1'and adar2_spi_flag = '1') THEN
+            FPGA_LNA_CTRL8  <= '1' ;
+        ELSE 
+            FPGA_LNA_CTRL8 <= '0' ;
+        END IF;
+
+   WHEN X"03"  =>                             -- TX CALIBRATION
+            FPGA_LNA_CTRL1   <= '0' ;
+            FPGA_LNA_CTRL2   <= '0' ;
+            FPGA_LNA_CTRL3   <= '0' ;
+            FPGA_LNA_CTRL4   <= '0' ;
+            FPGA_LNA_CTRL5   <= '0' ;
+            FPGA_LNA_CTRL6   <= '0' ;
+            FPGA_LNA_CTRL7   <= '0' ;
+            FPGA_LNA_CTRL8   <= '0' ;
+            FPGA_TR_ADAR1    <= PRT ;
+            FPGA_TR_ADAR2    <= PRT ;
+		  
+        -- IF (PRT_status = '1' and valid_prt = '1') THEN   ----------------prt should be present
+         IF (PRT = '1') THEN   ----------------prt should be present
+            IF (CHANNEL_SEL(0) = '1' and adar1_spi_flag = '1') THEN
+               FPGA_PA_CTRL1  <= PRT ;
+            ELSE
+               FPGA_PA_CTRL1  <= '0' ;
+            END IF;
+            IF (CHANNEL_SEL(1) = '1' and adar1_spi_flag = '1') THEN
+               FPGA_PA_CTRL2  <= PRT ;
+            ELSE
+               FPGA_PA_CTRL2  <= '0' ;
+            END IF;
+            IF (CHANNEL_SEL(2) = '1' and adar1_spi_flag = '1') THEN
+               FPGA_PA_CTRL3  <= PRT ;
+            ELSE
+               FPGA_PA_CTRL3  <= '0' ; 
+            END IF;
+            IF (CHANNEL_SEL(3) = '1' and adar1_spi_flag = '1') THEN
+               FPGA_PA_CTRL4  <= PRT ;
+            ELSE
+               FPGA_PA_CTRL4  <= '0' ;
+            END IF;
+            IF (CHANNEL_SEL(4) = '1' and adar2_spi_flag = '1') THEN
+               FPGA_PA_CTRL5  <= PRT ;
+            ELSE
+               FPGA_PA_CTRL5  <= '0' ;
+            END IF;
+            IF (CHANNEL_SEL(5) = '1' and adar2_spi_flag = '1') THEN
+               FPGA_PA_CTRL6  <= PRT ;
+            ELSE
+               FPGA_PA_CTRL6  <= '0' ;
+            END IF;
+            IF (CHANNEL_SEL(6) = '1' and adar2_spi_flag = '1') THEN
+               FPGA_PA_CTRL7  <= PRT ;
+            ELSE
+               FPGA_PA_CTRL7  <= '0' ;
+            END IF;
+            IF (CHANNEL_SEL(7) = '1' and adar2_spi_flag = '1') THEN
+               FPGA_PA_CTRL8  <= PRT ;
+            ELSE
+               FPGA_PA_CTRL8  <= '0' ;
+            END IF; 
+        ELSE            
+            FPGA_PA_CTRL1    <= '0' ;
+            FPGA_PA_CTRL2    <= '0' ;
+            FPGA_PA_CTRL3    <= '0' ;
+            FPGA_PA_CTRL4    <= '0' ;
+            FPGA_PA_CTRL5    <= '0' ;
+            FPGA_PA_CTRL6    <= '0' ;
+            FPGA_PA_CTRL7    <= '0' ;
+            FPGA_PA_CTRL8    <= '0' ;
+            FPGA_TR_ADAR1    <= '0' ;
+            FPGA_TR_ADAR2    <= '0' ;
+        END IF ;
+   WHEN X"04"        =>                    -- RX ISOLATION
+        if(adar1_spi_flag = '1' and adar2_spi_flag = '1') then
+             FPGA_TR_ADAR1    <= '1' ;
+             FPGA_TR_ADAR2    <= '1' ;
+             FPGA_LNA_CTRL1   <= '0' ;
+             FPGA_LNA_CTRL2   <= '0' ;
+             FPGA_LNA_CTRL3   <= '0' ;
+             FPGA_LNA_CTRL4   <= '0' ;
+             FPGA_LNA_CTRL5   <= '0' ;
+             FPGA_LNA_CTRL6   <= '0' ;
+             FPGA_LNA_CTRL7   <= '0' ;
+             FPGA_LNA_CTRL8   <= '0' ;
+             FPGA_PA_CTRL1    <= '0' ;
+             FPGA_PA_CTRL2    <= '0' ;
+             FPGA_PA_CTRL3    <= '0' ;
+             FPGA_PA_CTRL4    <= '0' ;
+             FPGA_PA_CTRL5    <= '0' ;
+             FPGA_PA_CTRL6    <= '0' ;
+             FPGA_PA_CTRL7    <= '0' ;
+             FPGA_PA_CTRL8    <= '0' ;
+     END IF;
+             
+          
+             
+   WHEN X"05"       =>                    -- TX ISOLATION
+
+       if(adar1_spi_flag = '1' and adar2_spi_flag = '1') then
+             FPGA_TR_ADAR1    <= '0' ;
+             FPGA_TR_ADAR1    <= '0' ;
+             FPGA_LNA_CTRL1   <= '0' ;
+             FPGA_LNA_CTRL2   <= '0' ;
+             FPGA_LNA_CTRL3   <= '0' ;
+             FPGA_LNA_CTRL4   <= '0' ;
+             FPGA_LNA_CTRL5   <= '0' ;
+             FPGA_LNA_CTRL6   <= '0' ;
+             FPGA_LNA_CTRL7   <= '0' ;
+             FPGA_LNA_CTRL8   <= '0' ;
+             FPGA_PA_CTRL1    <= '0' ;
+             FPGA_PA_CTRL2    <= '0' ;
+             FPGA_PA_CTRL3    <= '0' ;
+             FPGA_PA_CTRL4    <= '0' ;
+             FPGA_PA_CTRL5    <= '0' ;
+             FPGA_PA_CTRL6    <= '0' ;
+             FPGA_PA_CTRL7    <= '0' ;
+             FPGA_PA_CTRL8    <= '0' ;
+    
+        END IF ;
+                                           
+   WHEN X"06"       =>                    -- RX PATTERN
+        
+    if(adar1_spi_flag = '1' and adar2_spi_flag = '1') then
+             FPGA_TR_ADAR1    <= '0' ;
+             FPGA_TR_ADAR1    <= '0' ;
+             FPGA_LNA_CTRL1   <= '1' ;
+             FPGA_LNA_CTRL2   <= '1' ;
+             FPGA_LNA_CTRL3   <= '1' ;
+             FPGA_LNA_CTRL4   <= '1' ;
+             FPGA_LNA_CTRL5   <= '1' ;
+             FPGA_LNA_CTRL6   <= '1' ;
+             FPGA_LNA_CTRL7   <= '1' ;
+             FPGA_LNA_CTRL8   <= '1' ;
+             FPGA_PA_CTRL1    <= '0' ;
+             FPGA_PA_CTRL2    <= '0' ;
+             FPGA_PA_CTRL3    <= '0' ;
+             FPGA_PA_CTRL4    <= '0' ;
+             FPGA_PA_CTRL5    <= '0' ;
+             FPGA_PA_CTRL6    <= '0' ;
+             FPGA_PA_CTRL7    <= '0' ;
+             FPGA_PA_CTRL8    <= '0' ;
+      END IF ;
+          
+   WHEN X"07"  =>                   -- TX PATTERN  
+       if(adar1_spi_flag = '1' and adar2_spi_flag = '1') then 
+             FPGA_LNA_CTRL1   <= '0' ;
+             FPGA_LNA_CTRL2   <= '0' ;
+             FPGA_LNA_CTRL3   <= '0' ;
+             FPGA_LNA_CTRL4   <= '0' ;
+             FPGA_LNA_CTRL5   <= '0' ;
+             FPGA_LNA_CTRL6   <= '0' ;
+             FPGA_LNA_CTRL7   <= '0' ;
+             FPGA_LNA_CTRL8   <= '0' ;
+       -- IF (PRT_status = '1' and valid_prt = '1') THEN   ----------------prt should be present
+          IF (PRT = '1') THEN   ----------------prt should be present\
+             FPGA_TR_ADAR1    <= PRT ;
+             FPGA_TR_ADAR1    <= PRT ;
+             FPGA_PA_CTRL1    <= PRT ;
+             FPGA_PA_CTRL2    <= PRT ;
+             FPGA_PA_CTRL3    <= PRT ;
+             FPGA_PA_CTRL4    <= PRT ;
+             FPGA_PA_CTRL5    <= PRT ;
+             FPGA_PA_CTRL6    <= PRT ;
+             FPGA_PA_CTRL7    <= PRT ;
+             FPGA_PA_CTRL8    <= PRT ;
+         ELSE 
+             FPGA_PA_CTRL1    <= '0' ;
+             FPGA_PA_CTRL2    <= '0' ;
+             FPGA_PA_CTRL3    <= '0' ;
+             FPGA_PA_CTRL4    <= '0' ;
+             FPGA_PA_CTRL5    <= '0' ;
+             FPGA_PA_CTRL6    <= '0' ;
+             FPGA_PA_CTRL7    <= '0' ;
+             FPGA_PA_CTRL8    <= '0' ;
+         END IF;
+		 END IF ;
+		 
+    WHEN OTHERS =>
+             FPGA_LNA_CTRL1   <= '0' ;
+             FPGA_LNA_CTRL2   <= '0' ;
+             FPGA_LNA_CTRL3   <= '0' ;
+             FPGA_LNA_CTRL4   <= '0' ;
+             FPGA_LNA_CTRL5   <= '0' ;
+             FPGA_LNA_CTRL6   <= '0' ;
+             FPGA_LNA_CTRL7   <= '0' ;
+             FPGA_LNA_CTRL8   <= '0' ;
+             FPGA_PA_CTRL1    <= '0' ;
+             FPGA_PA_CTRL2    <= '0' ;
+             FPGA_PA_CTRL3    <= '0' ;
+             FPGA_PA_CTRL4    <= '0' ;
+             FPGA_PA_CTRL5    <= '0' ;
+             FPGA_PA_CTRL6    <= '0' ;
+             FPGA_PA_CTRL7    <= '0' ;
+             FPGA_PA_CTRL8    <= '0' ;
+             FPGA_TR_ADAR1    <= '0' ;
+             FPGA_TR_ADAR2    <= '0' ;
+ 
+END CASE ;
+END IF;
+END PROCESS ;
+
+end architecture_Mode_decoder;
