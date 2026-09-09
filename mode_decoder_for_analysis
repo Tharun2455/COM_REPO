@@ -1,0 +1,433 @@
+              
+---------------------spi data generation for adar in different modes of operation------------------------
+PROCESS (CLK_50MHz_I , SYS_RESET_I , COMMAND_OP_REG , CHANNEL_SEL_DECIMAL_REG , SOB, adar_spi_busy_flag_s,DATA_UPDATE_FLAG)    
+BEGIN
+	IF (SYS_RESET_I = '1') THEN
+		--adar_data_frame_in(k) <=(OTHERS => (OTHERS =>  '0')) ;
+		adar_data_frame_in <= (OTHERS =>(OTHERS => (OTHERS =>  '0'))) ;
+		adar_data_frame_in_flag  <= (OTHERS =>  '0');
+		word_count_adar_s<= (OTHERS =>  1);
+		power_on_reset_adar_completed_flag <= '0';
+        wait_counter_power_on_reset_adar<=0;
+	ELSIF (CLK_50MHz_I 'EVENT AND CLK_50MHz_I = '1') THEN
+	 
+
+	    
+		IF (delay_flag1 = '1' and power_on_reset_adar_completed_flag = '1') THEN
+		--IF (delay_flag2 = '1' and power_on_reset_adar_completed_flag = '1') THEN
+		--IF (DATA_UPDATE_FLAG = '1' and power_on_reset_adar_completed_flag = '1') THEN
+			CASE COMMAND_OP_REG_adar_update IS
+			--CASE COMMAND_OP_REG IS          
+				WHEN X"02" =>            -- RX_CALIBRATION  
+----	----------------------------------test 3_d adar_data----------------------------------------------------------
+                  for k in 1 to no_of_adars loop
+                        adar_data_frame_in(k)(0)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"00" & X"18" ;    -- USE SDO READBACK
+						adar_data_frame_in(k)(1)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"38" & X"60" ;    -- USE SPI FOR CHANNEL SETTINGS
+						adar_data_frame_in(k)(2)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"30" & X"20" ;   --  PA AND LNA bias  current DISABLE
+						adar_data_frame_in(k)(3)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"34" & X"08" ;    -- X"08" for NOMINAL BIAS SETTINGS/X"05" for LOW BIAS SETTINGS FOR RECEIVER RF SUBCIRCUITS
+						adar_data_frame_in(k)(4)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"35" & X"55" ;    -- X"55" for NOMINAL BIAS SETTINGS/X"1A" for LOW BIAS SETTINGS FOR RECEIVER RF SUBCIRCUITS 
+						adar_data_frame_in(k)(5)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"36" & X"00" ;    -- X"2D" for NOMINAL BIAS SETTINGS/X"15" for LOW BIAS SETTINGS FOR TRANSMITTER RF SUBCIRCUITS
+						adar_data_frame_in(k)(6)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"37" & X"00" ;    -- X"06" for NOMINAL BIAS SETTINGS/X"03" for LOW BIAS SETTINGS FOR TRANSMITTER RF SUBCIRCUITS        
+						--adar_data_frame_in(k)(7)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"31" & X"B0" ;    -- TRANSMIT AND RECEIVE SWITCHING THROUGH SPI         
+						adar_data_frame_in(k)(7)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"31" & X"04" ;    -- TRANSMIT AND RECEIVE SWITCHING THROUGH TR PIN                   
+                    IF (CHANNEL_SEL_DECIMAL_REG > 4*(k-1) and CHANNEL_SEL_DECIMAL_REG < 4*k+1) THEN                            
+                        FOR i IN 1 TO 4 LOOP -----------Tx/Rx_attenuation and phase I/Q data ----
+                            adar_data_frame_in(k)(3*(i-1)+8) <= CH_TX_GAIN_REGISTER_ADDRESS(i) 	  &	CH_ATTN_TX_NEXT_ADAR_MAPPING   (4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+9) <= CH_TX_PHASE_I_REGISTER_ADDRESS(i) &	CH_PHASE_I_TX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+10)<= CH_TX_PHASE_Q_REGISTER_ADDRESS(i) &	CH_PHASE_Q_TX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;  
+                            adar_data_frame_in(k)(3*(i-1)+20)<= CH_RX_GAIN_REGISTER_ADDRESS(i)    & CH_ATTN_RX_NEXT_ADAR_MAPPING   (4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+21)<= CH_RX_PHASE_I_REGISTER_ADDRESS(i) & CH_PHASE_I_RX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+22)<= CH_RX_PHASE_Q_REGISTER_ADDRESS(i) & CH_PHASE_Q_RX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;
+                        END LOOP;
+                        adar_data_frame_in (k)(33)    <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"2E" & CH_RX_ENABLE_REGISTER_VALUE_ADAR(CHANNEL_SEL_DECIMAL_REG  - 4*(k-1));
+                    ELSE
+                        FOR i IN 1 TO 4 LOOP -----------Tx/Rx_attenuation and phase I/Q data ----
+                          adar_data_frame_in(k)(3*(i-1)+8) <= CH_TX_GAIN_REGISTER_ADDRESS(i) 	& X"00" ;
+                          adar_data_frame_in(k)(3*(i-1)+9) <= CH_TX_PHASE_I_REGISTER_ADDRESS(i) & X"3F" ;
+                          adar_data_frame_in(k)(3*(i-1)+10)<= CH_TX_PHASE_Q_REGISTER_ADDRESS(i) & X"20" ;
+						  adar_data_frame_in(k)(3*(i-1)+20)<= CH_RX_GAIN_REGISTER_ADDRESS(i)    & X"00" ;
+						  adar_data_frame_in(k)(3*(i-1)+21)<= CH_RX_PHASE_I_REGISTER_ADDRESS(i) & X"3F" ;
+						  adar_data_frame_in(k)(3*(i-1)+22)<= CH_RX_PHASE_Q_REGISTER_ADDRESS(i) & X"20" ;
+					    END LOOP;
+					    adar_data_frame_in (k)(33)    <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"2E" & X"00" ;
+                    END IF; 
+                        adar_data_frame_in (k)(32) <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"2F" & X"00" ; 	--DISABLE TX PATH FOR ALL CHANNEL                   
+                        --adar_data_frame_in (k)(34) <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"28" & X"03" ; 	--loading to the working register                   
+                    word_count_adar_s(k)<= 34;
+                        IF(adar_spi_busy_flag_s(k) = '0') THEN
+                            adar_data_frame_in_flag(k)<= '1';
+                        ELSE
+                            adar_data_frame_in_flag(k)<= '0';
+                        END IF;
+            end loop;
+    
+				WHEN  X"03" =>                     -- TX CALIBRATION
+				
+         --------------------------------------adar_data----------------------------------------------------------
+		 for k in 1 to no_of_adars loop
+                        adar_data_frame_in(k)(0)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"00" & X"18" ;    -- USE SDO READBACK
+						adar_data_frame_in(k)(1)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"38" & X"60" ;    -- USE SPI FOR CHANNEL SETTINGS
+						adar_data_frame_in(k)(2)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"30" & X"20" ;   --  PA AND LNA bias  current DISABLE
+						adar_data_frame_in(k)(3)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"34" & X"00" ;    -- X"08" for NOMINAL BIAS SETTINGS/X"05" for LOW BIAS SETTINGS FOR RECEIVER RF SUBCIRCUITS
+						adar_data_frame_in(k)(4)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"35" & X"00" ;    -- X"55" for NOMINAL BIAS SETTINGS/X"1A" for LOW BIAS SETTINGS FOR RECEIVER RF SUBCIRCUITS 
+						adar_data_frame_in(k)(5)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"36" & X"2D" ;    -- X"2D" for NOMINAL BIAS SETTINGS/X"2A" for LOW BIAS SETTINGS FOR TRANSMITTER RF SUBCIRCUITS
+						adar_data_frame_in(k)(6)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"37" & X"06" ;    -- X"06" for NOMINAL BIAS SETTINGS/X"03" for LOW BIAS SETTINGS FOR TRANSMITTER RF SUBCIRCUITS        
+						--adar_data_frame_in(k)(7)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"31" & X"D2" ;    -- TRANSMIT AND RECEIVE SWITCHING THROUGH  SPI         
+						adar_data_frame_in(k)(7)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"31" & X"04" ;    -- TRANSMIT AND RECEIVE SWITCHING THROUGH TR PIN          
+					IF (CHANNEL_SEL_DECIMAL_REG > 4*(k-1) and CHANNEL_SEL_DECIMAL_REG < 4*k+1) THEN                            
+                        FOR i IN 1 TO 4 LOOP -----------Tx/Rx_attenuation and phase I/Q data ----
+                            adar_data_frame_in(k)(3*(i-1)+8) <= CH_TX_GAIN_REGISTER_ADDRESS(i) 	  &	CH_ATTN_TX_NEXT_ADAR_MAPPING   (4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+9) <= CH_TX_PHASE_I_REGISTER_ADDRESS(i) &	CH_PHASE_I_TX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+10)<= CH_TX_PHASE_Q_REGISTER_ADDRESS(i) &	CH_PHASE_Q_TX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;  
+                            adar_data_frame_in(k)(3*(i-1)+20)<= CH_RX_GAIN_REGISTER_ADDRESS(i)    & CH_ATTN_RX_NEXT_ADAR_MAPPING   (4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+21)<= CH_RX_PHASE_I_REGISTER_ADDRESS(i) & CH_PHASE_I_RX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+22)<= CH_RX_PHASE_Q_REGISTER_ADDRESS(i) & CH_PHASE_Q_RX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;
+                        END LOOP;
+                        adar_data_frame_in (k)(33)    <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"2F" & CH_TX_ENABLE_REGISTER_VALUE_ADAR(CHANNEL_SEL_DECIMAL_REG  - 4*(k-1));
+                    ELSE
+                        FOR i IN 1 TO 4 LOOP -----------Tx/Rx_attenuation and phase I/Q data ----
+                          adar_data_frame_in(k)(3*(i-1)+8) <= CH_TX_GAIN_REGISTER_ADDRESS(i) 	& X"00" ;
+                          adar_data_frame_in(k)(3*(i-1)+9) <= CH_TX_PHASE_I_REGISTER_ADDRESS(i) & X"3F" ;
+                          adar_data_frame_in(k)(3*(i-1)+10)<= CH_TX_PHASE_Q_REGISTER_ADDRESS(i) & X"20" ;
+						  adar_data_frame_in(k)(3*(i-1)+20)<= CH_RX_GAIN_REGISTER_ADDRESS(i)    & X"00" ;
+						  adar_data_frame_in(k)(3*(i-1)+21)<= CH_RX_PHASE_I_REGISTER_ADDRESS(i) & X"3F" ;
+						  adar_data_frame_in(k)(3*(i-1)+22)<= CH_RX_PHASE_Q_REGISTER_ADDRESS(i) & X"20" ;
+					    END LOOP;
+					    adar_data_frame_in (k)(33)    <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"2F" & X"00" ;
+                    END IF; 
+                        adar_data_frame_in (k)(32) <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"2E" & X"00" ; 	--DISABLE TX PATH FOR ALL CHANNEL 
+                       -- adar_data_frame_in (k)(34) <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"28" & X"03" ; 	--loading to the working register                   
+                    word_count_adar_s(k)<= 34;
+                        IF(adar_spi_busy_flag_s(k) = '0') THEN
+                            adar_data_frame_in_flag(k)<= '1';
+                        ELSE
+                            adar_data_frame_in_flag(k)<= '0';
+                        END IF;                    
+            end loop;
+         
+				WHEN X"04" | X"05" =>                        -----------RX/TX ISOLATION
+			for k in 1 to no_of_adars loop
+                        adar_data_frame_in(k)(0)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"00" & X"18" ;    -- USE SDO READBACK
+						adar_data_frame_in(k)(1)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"38" & X"60" ;    -- USE SPI FOR CHANNEL SETTINGS
+						adar_data_frame_in(k)(2)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"30" & X"20" ;   --  PA AND LNA bias  current DISABLE
+						adar_data_frame_in(k)(3)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"34" & X"00" ;    -- X"08" for NOMINAL BIAS SETTINGS/X"05" for LOW BIAS SETTINGS FOR RECEIVER RF SUBCIRCUITS
+						adar_data_frame_in(k)(4)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"35" & X"00" ;    -- X"55" for NOMINAL BIAS SETTINGS/X"1A" for LOW BIAS SETTINGS FOR RECEIVER RF SUBCIRCUITS 
+						adar_data_frame_in(k)(5)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"36" & X"00" ;    -- X"2D" for NOMINAL BIAS SETTINGS/X"15" for LOW BIAS SETTINGS FOR TRANSMITTER RF SUBCIRCUITS
+						adar_data_frame_in(k)(6)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"37" & X"00" ;    -- X"06" for NOMINAL BIAS SETTINGS/X"03" for LOW BIAS SETTINGS FOR TRANSMITTER RF SUBCIRCUITS        
+						adar_data_frame_in(k)(7)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"31" & X"04" ;    -- TRANSMIT AND RECEIVE SWITCHING THROUGH TR PIN          
+					FOR i IN 1 TO 4 LOOP -----------Tx/Rx_attenuation and phase I/Q data ----
+                            adar_data_frame_in(k)(3*(i-1)+8) <= CH_TX_GAIN_REGISTER_ADDRESS(i) 	  &	X"00" ;
+                            adar_data_frame_in(k)(3*(i-1)+9) <= CH_TX_PHASE_I_REGISTER_ADDRESS(i) &	X"3F" ;
+                            adar_data_frame_in(k)(3*(i-1)+10)<= CH_TX_PHASE_Q_REGISTER_ADDRESS(i) &	X"20" ;  
+                            adar_data_frame_in(k)(3*(i-1)+20)<= CH_RX_GAIN_REGISTER_ADDRESS(i)    & X"00" ;
+                            adar_data_frame_in(k)(3*(i-1)+21)<= CH_RX_PHASE_I_REGISTER_ADDRESS(i) & X"3F" ;
+                            adar_data_frame_in(k)(3*(i-1)+22)<= CH_RX_PHASE_Q_REGISTER_ADDRESS(i) & X"20" ;
+                     END LOOP;          
+						adar_data_frame_in (k)(32) <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"2F" & X"00" ; 	--DISABLE TX PATH FOR ALL CHANNEL
+						adar_data_frame_in (k)(33) <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"2E" & X"00" ;   --DISABLE RX PATH FOR ALL CHANNEL
+                        --adar_data_frame_in (k)(34) <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"28" & X"03" ;   -- LOADING TX AND RX WORKING REGISTER 
+                        --adar_data_frame_in(k)(34)   <= '1'& a14_TO_a11_ADAR_SLECTION & "000" & X"00" & X"18" ;    -- USE SDO READBACK
+                        --adar_data_frame_in(k)(35)   <= '1'& a14_TO_a11_ADAR_SLECTION & "000" & X"38" & X"60" ;    -- USE SPI FOR CHANNEL SETTINGS
+                    word_count_adar_s(k)<= 34;
+							IF(adar_spi_busy_flag_s(k) = '0') THEN
+								adar_data_frame_in_flag(k)<= '1';
+							ELSE
+								adar_data_frame_in_flag(k)<= '0';           
+							END IF;
+            end loop;						
+---------------------------------------------------------------------------------------------------------------------- 
+---------------------------------------------------------------------------------------------------------------------- 
+				WHEN X"06"    =>                  ---- RX PATTERN
+--------------------------------------adar1_data----------------------------------------------------------
+			for k in 1 to no_of_adars loop
+                        adar_data_frame_in(k)(0)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"00" & X"18" ;    -- USE SDO READBACK
+						adar_data_frame_in(k)(1)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"38" & X"60" ;    -- USE SPI FOR CHANNEL SETTINGS
+						adar_data_frame_in(k)(2)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"30" & X"20" ;   --  PA AND LNA bias  current DISABLE
+						adar_data_frame_in(k)(3)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"34" & X"08" ;    -- X"08" for NOMINAL BIAS SETTINGS/X"05" for LOW BIAS SETTINGS FOR RECEIVER RF SUBCIRCUITS
+						adar_data_frame_in(k)(4)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"35" & X"55" ;    -- X"55" for NOMINAL BIAS SETTINGS/X"1A" for LOW BIAS SETTINGS FOR RECEIVER RF SUBCIRCUITS 
+						adar_data_frame_in(k)(5)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"36" & X"00" ;    -- X"2D" for NOMINAL BIAS SETTINGS/X"15" for LOW BIAS SETTINGS FOR TRANSMITTER RF SUBCIRCUITS
+						adar_data_frame_in(k)(6)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"37" & X"00" ;    -- X"06" for NOMINAL BIAS SETTINGS/X"03" for LOW BIAS SETTINGS FOR TRANSMITTER RF SUBCIRCUITS        
+						adar_data_frame_in(k)(7)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"31" & X"04" ;    -- TRANSMIT AND RECEIVE SWITCHING THROUGH TR PIN          
+                        FOR i IN 1 TO 4 LOOP -----------Tx/Rx_attenuation and phase I/Q data ----
+                            adar_data_frame_in(k)(3*(i-1)+8) <= CH_TX_GAIN_REGISTER_ADDRESS(i) 	  &	CH_ATTN_TX_NEXT_ADAR_MAPPING   (4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+9) <= CH_TX_PHASE_I_REGISTER_ADDRESS(i) &	CH_PHASE_I_TX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+10)<= CH_TX_PHASE_Q_REGISTER_ADDRESS(i) &	CH_PHASE_Q_TX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;  
+                            adar_data_frame_in(k)(3*(i-1)+20)<= CH_RX_GAIN_REGISTER_ADDRESS(i)    & CH_ATTN_RX_NEXT_ADAR_MAPPING   (4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+21)<= CH_RX_PHASE_I_REGISTER_ADDRESS(i) & CH_PHASE_I_RX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+22)<= CH_RX_PHASE_Q_REGISTER_ADDRESS(i) & CH_PHASE_Q_RX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;
+                        END LOOP;          
+						adar_data_frame_in (k)(32) <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"2F" & X"00" ; 	--DISABLE TX PATH FOR ALL CHANNEL
+						adar_data_frame_in (K)(33) <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"2E" & '0' & control_bits_TRM_reg(4*(K-1)+1)(0) & control_bits_TRM_reg(4*(K-1)+2)(0) & control_bits_TRM_reg(4*(K-1)+3)(0) & control_bits_TRM_reg(4*(K-1)+4)(0) & "111" ;----RX ENABLE CH
+                        --adar_data_frame_in (k)(34) <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"28" & X"03" ;   -- LOADING TX AND RX WORKING REGISTER 
+                        word_count_adar_s(k)<= 34;
+							IF(adar_spi_busy_flag_s(k) = '0') THEN
+								adar_data_frame_in_flag(k)<= '1';
+							ELSE
+								adar_data_frame_in_flag(k)<= '0';           
+							END IF;
+            end loop;
+---------------------------------------------------------------------------------------------------------------------- 
+				WHEN X"07" =>       ----------TX PATTERN             
+--------------------------------------adar1_data----------------------------------------------------------
+			for k in 1 to no_of_adars loop
+                        adar_data_frame_in(k)(0)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"00" & X"18" ;    -- USE SDO READBACK
+						adar_data_frame_in(k)(1)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"38" & X"60" ;    -- USE SPI FOR CHANNEL SETTINGS
+						adar_data_frame_in(k)(2)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"30" & X"20" ;   --  PA AND LNA bias  current DISABLE
+						adar_data_frame_in(k)(3)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"34" & X"00" ;    -- X"08" for NOMINAL BIAS SETTINGS/X"05" for LOW BIAS SETTINGS FOR RECEIVER RF SUBCIRCUITS
+						adar_data_frame_in(k)(4)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"35" & X"00" ;    -- X"55" for NOMINAL BIAS SETTINGS/X"1A" for LOW BIAS SETTINGS FOR RECEIVER RF SUBCIRCUITS 
+						adar_data_frame_in(k)(5)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"36" & X"2D" ;    -- X"2D" for NOMINAL BIAS SETTINGS/X"15" for LOW BIAS SETTINGS FOR TRANSMITTER RF SUBCIRCUITS
+						adar_data_frame_in(k)(6)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"37" & X"06" ;    -- X"06" for NOMINAL BIAS SETTINGS/X"03" for LOW BIAS SETTINGS FOR TRANSMITTER RF SUBCIRCUITS        
+						adar_data_frame_in(k)(7)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"31" & X"04" ;    -- TRANSMIT AND RECEIVE SWITCHING THROUGH TR PIN          
+                        FOR i IN 1 TO 4 LOOP -----------Tx/Rx_attenuation and phase I/Q data ----
+                            adar_data_frame_in(k)(3*(i-1)+8) <= CH_TX_GAIN_REGISTER_ADDRESS(i) 	  &	CH_ATTN_TX_NEXT_ADAR_MAPPING   (4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+9) <= CH_TX_PHASE_I_REGISTER_ADDRESS(i) &	CH_PHASE_I_TX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+10)<= CH_TX_PHASE_Q_REGISTER_ADDRESS(i) &	CH_PHASE_Q_TX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;  
+                            adar_data_frame_in(k)(3*(i-1)+20)<= CH_RX_GAIN_REGISTER_ADDRESS(i)    & CH_ATTN_RX_NEXT_ADAR_MAPPING   (4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+21)<= CH_RX_PHASE_I_REGISTER_ADDRESS(i) & CH_PHASE_I_RX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+22)<= CH_RX_PHASE_Q_REGISTER_ADDRESS(i) & CH_PHASE_Q_RX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;
+                        END LOOP;          
+						adar_data_frame_in (k)(32) <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"2E" & X"00" ; 	--DISABLE RX PATH FOR ALL CHANNEL
+						adar_data_frame_in (K)(33) <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"2F" & '0' & control_bits_TRM_reg(4*(K-1)+1)(1) & control_bits_TRM_reg(4*(K-1)+2)(1) & control_bits_TRM_reg(4*(K-1)+3)(1) & control_bits_TRM_reg(4*(K-1)+4)(1) & "111" ;----TX ENABLE CH
+                        --adar_data_frame_in (k)(34) <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"28" & X"03" ;   -- LOADING TX AND RX WORKING REGISTER 
+                        word_count_adar_s(k)<= 34;
+							IF(adar_spi_busy_flag_s(k) = '0') THEN
+								adar_data_frame_in_flag(k)<= '1';
+							ELSE
+								adar_data_frame_in_flag(k)<= '0';           
+							END IF;
+            end loop;
+ ---------------------------------------------------------------------------------------------------------------------- 
+				WHEN X"01"    =>                  --DWELL MODE
+--------------------------------------adar1_data----------------------------------------------------------
+			for k in 1 to no_of_adars loop
+                        adar_data_frame_in(k)(0)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"00" & X"18" ;    -- USE SDO READBACK
+						adar_data_frame_in(k)(1)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"38" & X"60" ;    -- USE SPI FOR CHANNEL SETTINGS
+						adar_data_frame_in(k)(2)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"30" & X"20" ;   --  PA AND LNA bias  current DISABLE
+						adar_data_frame_in(k)(3)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"34" & X"08" ;    -- X"08" for NOMINAL BIAS SETTINGS/X"05" for LOW BIAS SETTINGS FOR RECEIVER RF SUBCIRCUITS
+						adar_data_frame_in(k)(4)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"35" & X"55" ;    -- X"55" for NOMINAL BIAS SETTINGS/X"1A" for LOW BIAS SETTINGS FOR RECEIVER RF SUBCIRCUITS 
+						adar_data_frame_in(k)(5)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"36" & X"2D" ;    -- X"2D" for NOMINAL BIAS SETTINGS/X"15" for LOW BIAS SETTINGS FOR TRANSMITTER RF SUBCIRCUITS
+						adar_data_frame_in(k)(6)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"37" & X"06" ;    -- X"06" for NOMINAL BIAS SETTINGS/X"03" for LOW BIAS SETTINGS FOR TRANSMITTER RF SUBCIRCUITS        
+						adar_data_frame_in(k)(7)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"31" & X"04" ;    -- TRANSMIT AND RECEIVE SWITCHING THROUGH TR PIN          
+					    FOR i IN 1 TO 4 LOOP -----------Tx/Rx_attenuation and phase I/Q data ----
+                            adar_data_frame_in(k)(3*(i-1)+8) <= CH_TX_GAIN_REGISTER_ADDRESS(i) 	  &	CH_ATTN_TX_NEXT_ADAR_MAPPING   (4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+9) <= CH_TX_PHASE_I_REGISTER_ADDRESS(i) &	CH_PHASE_I_TX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+10)<= CH_TX_PHASE_Q_REGISTER_ADDRESS(i) &	CH_PHASE_Q_TX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;  
+                            adar_data_frame_in(k)(3*(i-1)+20)<= CH_RX_GAIN_REGISTER_ADDRESS(i)    & CH_ATTN_RX_NEXT_ADAR_MAPPING   (4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+21)<= CH_RX_PHASE_I_REGISTER_ADDRESS(i) & CH_PHASE_I_RX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;
+                            adar_data_frame_in(k)(3*(i-1)+22)<= CH_RX_PHASE_Q_REGISTER_ADDRESS(i) & CH_PHASE_Q_RX_NEXT_ADAR_MAPPING(4*(k-1)+ i) ;
+                        END LOOP;          
+						adar_data_frame_in (K)(32) <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"2E" & '0' & control_bits_TRM_reg(4*(K-1)+1)(0) & control_bits_TRM_reg(4*(K-1)+2)(0) & control_bits_TRM_reg(4*(K-1)+3)(0) & control_bits_TRM_reg(4*(K-1)+4)(0) & "111" ;----RX ENABLE CH												
+						adar_data_frame_in (K)(33) <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"2F" & '0' & control_bits_TRM_reg(4*(K-1)+1)(1) & control_bits_TRM_reg(4*(K-1)+2)(1) & control_bits_TRM_reg(4*(K-1)+3)(1) & control_bits_TRM_reg(4*(K-1)+4)(1) & "111" ;----TX ENABLE CH
+                        --adar_data_frame_in (k)(34) <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"28" & X"03" ;   -- LOADING TX AND RX WORKING REGISTER    
+                        word_count_adar_s(k)<= 34;
+							IF(adar_spi_busy_flag_s(k) = '0') THEN
+								adar_data_frame_in_flag(k)<= '1';
+							ELSE
+								adar_data_frame_in_flag(k)<= '0';           
+							END IF;
+            end loop;
+ ----------------------------------------------------------------------------------------------------------------------                                    
+				WHEN X"20"  => --------------SOFT RESET
+				for k in 1 to no_of_adars loop
+                        adar_data_frame_in(k)(0)  <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"00" & X"81" ;    -- soft_rest adar
+                        word_count_adar_s(k)<= 1;
+                        IF(SOB_Input_P_VE_edge = '1') THEN
+							IF(adar_spi_busy_flag_s(k) = '0') THEN
+								adar_data_frame_in_flag(k)<= '1';
+							ELSE
+								adar_data_frame_in_flag(k)<= '0';           
+							END IF;
+                        END IF;
+                end loop;
+-----------------------		
+				WHEN OTHERS  =>
+					adar_data_frame_in <= (OTHERS =>(OTHERS => (OTHERS =>  '0'))) ;
+					adar_data_frame_in_flag  <= (OTHERS =>  '0');
+                    word_count_adar_s<= (OTHERS =>  1);
+			END CASE ;
+		ELSE
+		------------POWER ON ADAR RESET---------
+	       if wait_counter_power_on_reset_adar > 1000 then
+	              power_on_reset_adar_completed_flag<= '1';
+	              adar_data_frame_in <= (OTHERS =>(OTHERS => (OTHERS =>  '0'))) ;
+	              adar_data_frame_in_flag  <= (OTHERS =>  '0');
+	              word_count_adar_s<= (OTHERS =>  1);
+	              
+	       else
+	       	   wait_counter_power_on_reset_adar <= wait_counter_power_on_reset_adar + 1;
+           end if;
+           if  power_on_reset_adar_completed_flag = '0' THEN 
+	              for k in 1 to no_of_adars loop
+                   adar_data_frame_in(k)(0)   <= '0' & a14_TO_a11_ADAR_SLECTION & "000" & X"00" & X"81" ;    -- adar register reset
+                  	IF(adar_spi_busy_flag_s(k) = '0') THEN
+		    			adar_data_frame_in_flag(k)<= '1';
+		    		ELSE
+		    		    adar_data_frame_in_flag(k)<= '0';           
+		    		END IF;
+                   word_count_adar_s(k)<= 1;
+	              end loop;
+	       end if;						
+--			adar_data_frame_in <= (OTHERS =>(OTHERS => (OTHERS =>  '0'))) ;
+--			adar_data_frame_in_flag  <= (OTHERS =>  '0');
+--			word_count_adar_s<= (OTHERS =>  1);
+		END IF;
+	END IF;
+END PROCESS ;  
+
+
+component spi_wrap_1 is  
+	port (
+			reset			:in		std_logic := '1';
+			CLK_50MHz_I				:in		std_logic;	---50mhz		
+				
+			data_frame_in	:in		frame_70word_24bit;-- :=(x"800001" ,x"800002" ,x"000003" ,x"800004" ,x"800005" ) ;--frame_70word_24bit;
+			word_count		:in		integer range 0 to 128 ;
+			data_in_flag	:in		std_logic := '0';
+			
+			data_frame_out	:out	frame_70word_8bit;--frame_10word_8bit;
+			data_frame_o_v  :out  	std_logic;
+			busy_flag		:out  	std_logic;
+----------spi--------------------------------------------------------
+			sdo      		:in	STD_LOGIC ;-----spi sdo line
+	        sdio     		:out	STD_LOGIC ;----spi sdio line
+            sclk            :out	STD_LOGIC ;
+            cs              :out	STD_LOGIC 			
+   );
+end component;
+
+component spi_wrap_2 is  
+	port (
+			reset			:in		std_logic := '1';
+			CLK_50MHz_I				:in		std_logic;	---50mhz		
+				
+			data_frame_in	:in		frame_70word_24bit;-- :=(x"800001" ,x"800002" ,x"000003" ,x"800004" ,x"800005" ) ;--frame_70word_24bit;
+			word_count		:in		integer range 0 to 128 ;
+			data_in_flag	:in		std_logic := '0';
+			
+			data_frame_out	:out	frame_70word_8bit;--frame_10word_8bit;
+			data_frame_o_v  :out  	std_logic;
+			busy_flag		:out  	std_logic;
+----------spi--------------------------------------------------------
+			sdo      		:in	STD_LOGIC ;-----spi sdo line
+	        sdio     		:out	STD_LOGIC ;----spi sdio line
+            sclk            :out	STD_LOGIC ;
+            cs              :out	STD_LOGIC 			
+   );
+end component;
+
+component spi_wrap_3 is  
+	port (
+			reset			:in		std_logic := '1';
+			CLK_50MHz_I				:in		std_logic;	---50mhz		
+				
+			data_frame_in	:in		frame_70word_24bit;-- :=(x"800001" ,x"800002" ,x"000003" ,x"800004" ,x"800005" ) ;--frame_70word_24bit;
+			word_count		:in		integer range 0 to 128 ;
+			data_in_flag	:in		std_logic := '0';
+			
+			data_frame_out	:out	frame_70word_8bit;--frame_10word_8bit;
+			data_frame_o_v  :out  	std_logic;
+			busy_flag		:out  	std_logic;
+----------spi--------------------------------------------------------
+			sdo      		:in	STD_LOGIC ;-----spi sdo line
+	        sdio     		:out	STD_LOGIC ;----spi sdio line
+            sclk            :out	STD_LOGIC ;
+            cs              :out	STD_LOGIC 			
+   );
+end component;
+
+component spi_wrap_4 is  
+	port (
+			reset			:in		std_logic := '1';
+			CLK_50MHz_I				:in		std_logic;	---50mhz		
+				
+			data_frame_in	:in		frame_70word_24bit;-- :=(x"800001" ,x"800002" ,x"000003" ,x"800004" ,x"800005" ) ;--frame_70word_24bit;
+			word_count		:in		integer range 0 to 128 ;
+			data_in_flag	:in		std_logic := '0';
+			
+			data_frame_out	:out	frame_70word_8bit;--frame_10word_8bit;
+			data_frame_o_v  :out  	std_logic;
+			busy_flag		:out  	std_logic;
+----------spi--------------------------------------------------------
+			sdo      		:in	STD_LOGIC ;-----spi sdo line
+	        sdio     		:out	STD_LOGIC ;----spi sdio line
+            sclk            :out	STD_LOGIC ;
+            cs              :out	STD_LOGIC 			
+   );
+end component;
+
+adar1_spi_ctrl_inst: spi_wrap_1 
+	port map(
+			reset			=> por_rst,
+			CLK_50MHz_I		=> clk_50mhz,
+				
+			data_frame_in	=> data_frame_in_1,
+			word_count		=> word_count,
+			data_in_flag	=> data_adar_flag,--data_in_flag,
+			                   
+			data_frame_out	=> data_frame_out_1,
+
+			data_frame_o_v  => data_frame_o_v_1,
+			busy_flag		=> busy_flag_1,
+
+			sdo      		=> SDO_ADAR1_I,
+	        sdio     		=> SDIO_ADAR1_IO,
+            sclk            => SCLK_ADAR1_O,
+            cs              => CSB_ADAR1_O
+   );
+
+adar2_spi_ctrl_inst: spi_wrap_2 
+	port map(
+			reset			=> por_rst,                             
+			CLK_50MHz_I		=> clk_50mhz,                        
+				 
+			data_frame_in	=> data_frame_in_2,                    
+			word_count		=> word_count,                      
+			data_in_flag	=> data_adar_flag,--data_adar_flag,  
+			                   
+			data_frame_out	=> data_frame_out_2,                 
+			data_frame_o_v  => data_frame_o_v_2,                
+			busy_flag		=> busy_flag_2,                      
+
+			sdo      		=> SDO_ADAR2_I,                         
+	        sdio     		=> SDIO_ADAR2_IO,                    
+            sclk            => SCLK_ADAR2_O,                     
+            cs              => CSB_ADAR2_O                          
+   );
+
+--adar3_spi_ctrl_inst: spi_wrap_3 
+	--port map(
+			--reset			=> por_rst,
+			--CLK_50MHz_I		=> clk_50mhz,
+				--
+			--data_frame_in	=> data_frame_in_3,
+			--word_count		=> word_count,
+			--data_in_flag	=> data_adar_flag,--data_adar_flag,
+			                   --
+			--data_frame_out	=> data_frame_out_3,
+			--data_frame_o_v  => data_frame_o_v_3,
+			--busy_flag		=> busy_flag_3,
+--
+			--sdo      		=> SDO_ADAR3_I,
+	        --sdio     		=> SDIO_ADAR3_IO,
+            --sclk            => SCLK_ADAR3_O,
+            --cs              => CSB_ADAR3_O
+   --);
+--
+--
+--adar4_spi_ctrl_inst: spi_wrap_4 
+	--port map(
+			--reset			=> por_rst,
+			--CLK_50MHz_I		=> clk_50mhz,
+				--
+			--data_frame_in	=> data_frame_in_4,
+			--word_count		=> word_count,
+			--data_in_flag	=> data_adar_flag,--data_adar_flag,
+			                   --
+			--data_frame_out	=> data_frame_out_4,
+			--data_frame_o_v  => data_frame_o_v_4,
+			--busy_flag		=> busy_flag_4,
+--
+			--sdo      		=> SDO_ADAR4_I,
+	        --sdio     		=> SDIO_ADAR4_IO,
+            --sclk            => SCLK_ADAR4_O,
+            --cs              =
