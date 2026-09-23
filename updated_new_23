@@ -1,0 +1,67 @@
+------------------------------------------------------------------
+-- WHEN 0x00: INITIALIZATION MODE (Corrected Register Sequence)
+------------------------------------------------------------------
+when X"00" =>
+    if (RX_FRAME(5) = X"FF") then
+        ----------------------------------------------------------
+        -- CHIP 0 (Address "00")
+        ----------------------------------------------------------
+        data_frame_in_adar1_s(0)  <= "0" & "00" & "00000" & x"0081"; -- 1. Soft Reset
+        data_frame_in_adar1_s(1)  <= "0" & "00" & "00000" & x"0018"; -- 2. SDO 4-wire Enable
+        data_frame_in_adar1_s(2)  <= "0" & "00" & "00000" & x"3860"; -- 3. SPI Control Mode
+        data_frame_in_adar1_s(3)  <= "0" & "00" & "00000" & x"3104"; -- 4. TR Pin Control
+        data_frame_in_adar1_s(4)  <= "0" & "00" & "00000" & x"3408"; -- 5. RX Bias 1
+        data_frame_in_adar1_s(5)  <= "0" & "00" & "00000" & x"3555"; -- 6. RX Bias 2
+        data_frame_in_adar1_s(6)  <= "0" & "00" & "00000" & x"2D22"; -- 7. Power Management
+        data_frame_in_adar1_s(7)  <= "0" & "00" & "00000" & x"2E00"; -- 8. Safe RX Disable
+        data_frame_in_adar1_s(8)  <= "0" & "00" & "00000" & x"2801"; -- 9. Latch / Sync SPI
+
+        ----------------------------------------------------------
+        -- CHIP 1 (Address "01")
+        ----------------------------------------------------------
+        data_frame_in_adar1_s(9)  <= "0" & "01" & "00000" & x"0081";
+        data_frame_in_adar1_s(10) <= "0" & "01" & "00000" & x"0018";
+        data_frame_in_adar1_s(11) <= "0" & "01" & "00000" & x"3860";
+        data_frame_in_adar1_s(12) <= "0" & "01" & "00000" & x"3104";
+        data_frame_in_adar1_s(13) <= "0" & "01" & "00000" & x"3408";
+        data_frame_in_adar1_s(14) <= "0" & "01" & "00000" & x"3555";
+        data_frame_in_adar1_s(15) <= "0" & "01" & "00000" & x"2D22";
+        data_frame_in_adar1_s(16) <= "0" & "01" & "00000" & x"2E00";
+        data_frame_in_adar1_s(17) <= "0" & "01" & "00000" & x"2801";
+
+        ----------------------------------------------------------
+        -- CHIP 2 (Address "10")
+        ----------------------------------------------------------
+        data_frame_in_adar1_s(18) <= "0" & "10" & "00000" & x"0081";
+        data_frame_in_adar1_s(19) <= "0" & "10" & "00000" & x"0018";
+        data_frame_in_adar1_s(20) <= "0" & "10" & "00000" & x"3860";
+        data_frame_in_adar1_s(21) <= "0" & "10" & "00000" & x"3104";
+        data_frame_in_adar1_s(22) <= "0" & "10" & "00000" & x"3408";
+        data_frame_in_adar1_s(23) <= "0" & "10" & "00000" & x"3555";
+        data_frame_in_adar1_s(24) <= "0" & "10" & "00000" & x"2D22";
+        data_frame_in_adar1_s(25) <= "0" & "10" & "00000" & x"2E00";
+        data_frame_in_adar1_s(26) <= "0" & "10" & "00000" & x"2801";
+
+        ----------------------------------------------------------
+        -- CHIP 3 (Address "11")
+        ----------------------------------------------------------
+        data_frame_in_adar1_s(27) <= "0" & "11" & "00000" & x"0081";
+        data_frame_in_adar1_s(28) <= "0" & "11" & "00000" & x"0018";
+        data_frame_in_adar1_s(29) <= "0" & "11" & "00000" & x"3860";
+        data_frame_in_adar1_s(30) <= "0" & "11" & "00000" & x"3104";
+        data_frame_in_adar1_s(31) <= "0" & "11" & "00000" & x"3408";
+        data_frame_in_adar1_s(32) <= "0" & "11" & "00000" & x"3555";
+        data_frame_in_adar1_s(33) <= "0" & "11" & "00000" & x"2D22";
+        data_frame_in_adar1_s(34) <= "0" & "11" & "00000" & x"2E00";
+        data_frame_in_adar1_s(35) <= "0" & "11" & "00000" & x"2801";
+
+        -- Mirror to other SPI controllers if needed
+        data_frame_in_adar2_s <= data_frame_in_adar1_s;
+        data_frame_in_adar3_s <= data_frame_in_adar1_s;
+        data_frame_in_adar4_s <= data_frame_in_adar1_s;
+
+        word_count_adar1_s <= 36;
+        word_count_adar2_s <= 36;
+        word_count_adar3_s <= 36;
+        word_count_adar4_s <= 36;
+    end if;
