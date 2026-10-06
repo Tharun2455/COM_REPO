@@ -1,0 +1,518 @@
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+
+library work;
+use work.frame_type.all;
+
+entity Mode_decoder is
+port (
+    CLK_50MHz_I             : in  std_logic;
+    CLK_5MHz_I              : in  std_logic;
+    CLK_10MHZ_I             : in  std_logic;
+    SYS_RESET_I             : in  std_logic;
+    
+    -- External Timing Input Trigger
+    INT_TRP_I               : in  std_logic;
+    
+    RX_FRAME                : in  frame_50word_8bit;
+    FLAG_FRAME              : in  std_logic;
+    
+    CMD_TYPE_NOP            : out std_logic_vector(7 downto 0); 
+    STATUS_TYPE             : out std_logic_vector(3 downto 0); 
+    FLASH_CMD               : out std_logic_vector(7 downto 0);
+    FLASH_INPUT_FRAME       : out frame_10word_8bit; 
+
+    SCLK_ADAR1_O            : out std_logic;
+    CSB_ADAR1_O             : out std_logic;
+    SDO_ADAR1_I             : in  std_logic;
+    SDIO_ADAR1_IO           : out std_logic; 
+    
+    SCLK_ADAR2_O            : out std_logic;
+    CSB_ADAR2_O             : out std_logic;
+    SDO_ADAR2_I             : in  std_logic;
+    SDIO_ADAR2_IO           : out std_logic; 
+    
+    SCLK_ADAR3_O            : out std_logic;
+    CSB_ADAR3_O             : out std_logic;
+    SDO_ADAR3_I             : in  std_logic;
+    SDIO_ADAR3_IO           : out std_logic; 
+    
+    SCLK_ADAR4_O            : out std_logic;
+    CSB_ADAR4_O             : out std_logic;
+    SDO_ADAR4_I             : in  std_logic;
+    SDIO_ADAR4_IO           : out std_logic; 
+
+    FPGA_TR_ADAR1           : out std_logic;
+    FPGA_TR_ADAR2           : out std_logic;
+    FPGA_TR_ADAR3           : out std_logic;
+    FPGA_TR_ADAR4           : out std_logic;
+    
+    FPGA_TX_LOAD_ADAR1      : out std_logic;
+    FPGA_RX_LOAD_ADAR1      : out std_logic;
+    FPGA_TX_LOAD_ADAR2      : out std_logic;
+    FPGA_RX_LOAD_ADAR2      : out std_logic;
+    FPGA_TX_LOAD_ADAR3      : out std_logic;
+    FPGA_RX_LOAD_ADAR3      : out std_logic;
+    FPGA_TX_LOAD_ADAR4      : out std_logic;
+    FPGA_RX_LOAD_ADAR4      : out std_logic;
+     
+    FPGA_SPI_BUFF_CTRL_G1_1 : out std_logic;
+    FPGA_SPI_BUFF_CTRL_G2_1 : out std_logic;
+    FPGA_SPI_BUFF_CTRL_G3_1 : out std_logic;
+    FPGA_SPI_BUFF_CTRL_G4_1 : out std_logic;    
+
+    DC_DC_Control_Buffer_1  : out std_logic;
+    BUFF_ENABLE_TX_TR_SW_1  : out std_logic;
+    FPGA_EN_n5V_DC_DC7149_1 : out std_logic;
+    FPGA_TX_EN_G1_G2_1      : out std_logic;
+    FPGA_TX_EN_G3_G4_1      : out std_logic;
+
+    TR_SW_G1_1              : out std_logic;
+    TR_SW_G2_1              : out std_logic;
+    TR_SW_G3_1              : out std_logic;
+    TR_SW_G4_1              : out std_logic;
+
+    FPGA_EN_28NV_DC_DC7149_1: out std_logic;
+    FPGA_3_3v_1             : out std_logic; 
+    
+    PA_ON_1_1               : out std_logic;
+    PA_ON_2_1               : out std_logic;
+    PA_ON_3_1               : out std_logic;
+    PA_ON_4_1               : out std_logic;
+    
+    FPGA_RX_EN_G1_G2_1      : out std_logic;
+    FPGA_RX_EN_G3_G4_1      : out std_logic;
+    
+    RX_EN_ADAR_1_1          : out std_logic;
+    RX_EN_ADAR_2_1          : out std_logic;
+    RX_EN_ADAR_5_1          : out std_logic;
+    RX_EN_ADAR_6_1          : out std_logic;
+    RX_EN_ADAR_3_1          : out std_logic;
+    RX_EN_ADAR_4_1          : out std_logic;
+    RX_EN_ADAR_7_1          : out std_logic;
+    RX_EN_ADAR_8_1          : out std_logic;
+    RX_EN_ADAR_9_1          : out std_logic;
+    RX_EN_ADAR_10_1         : out std_logic;
+    RX_EN_ADAR_11_1         : out std_logic;
+    RX_EN_ADAR_12_1         : out std_logic;
+    RX_EN_ADAR_13_1         : out std_logic;
+    RX_EN_ADAR_14_1         : out std_logic;
+    RX_EN_ADAR_15_1         : out std_logic;
+    RX_EN_ADAR_16_1         : out std_logic
+);
+end entity Mode_decoder;
+
+architecture architecture_Mode_decoder of Mode_decoder is
+
+    component spi_wrap is  
+        port (
+            reset           : in  std_logic;
+            CLK_50MHz_I     : in  std_logic;        
+            data_frame_in   : in  frame_70word_24bit;
+            word_count      : in  integer range 0 to 128;
+            data_in_flag    : in  std_logic;
+            data_frame_out  : out frame_70word_8bit;
+            data_frame_o_v  : out std_logic;
+            busy_flag       : out std_logic;
+            sdo             : in  std_logic;
+            sdio            : out std_logic;
+            sclk            : out std_logic;
+            cs              : out std_logic            
+        );
+    end component;
+
+    ------------------------------------------------------------------
+    -- ADAR1000 Initialization ROM Sequence (11 Registers)
+    ------------------------------------------------------------------
+    type init_rom_type is array (0 to 10) of std_logic_vector(15 downto 0);
+    constant ADAR_INIT_ROM : init_rom_type := (
+        0  => X"0081", -- 1. Soft Reset
+        1  => X"0018", -- 2. SDO 4-Wire Enable
+        2  => X"3860", -- 3. SPI Control Mode
+        3  => X"3100", -- 4. TR Pin Control (SPI Mode)
+        4  => X"2D44", -- 5. Power Management
+        5  => X"3010", -- 6. Bias / LDO Settings
+        6  => X"4AFF", -- 7. Global Enable Matrix
+        7  => X"29FF", -- 8. Channel Beam Control 1
+        8  => X"2AFF", -- 9. Channel Beam Control 2
+        9  => X"2BFF", -- 10. Channel Beam Control 3
+        10 => X"2CFF"  -- 11. Channel Beam Control 4
+    );
+
+    -- Internal Signals
+    signal CMD_TYPE               : std_logic_vector(7 downto 0) := (others => '0');
+    signal CHANNEL_SEL            : std_logic_vector(7 downto 0) := (others => '0');
+    signal CMD_TYPE_NOP_S         : std_logic_vector(7 downto 0) := (others => '0');
+    signal STATUS_TYPE_S          : std_logic_vector(3 downto 0) := (others => '0');
+    signal FLASH_CMD_S            : std_logic_vector(7 downto 0) := (others => '0');
+    signal FLASH_INPUT_FRAME_S    : frame_10word_8bit            := (others => (others => '0'));
+    
+    signal adar_rst_cnt           : unsigned(27 downto 0)        := (others => '0');
+    signal data_adar_flag_raw     : std_logic                    := '0';
+    signal por_flag_raw           : std_logic                    := '0';
+    signal data_adar_flag_d1      : std_logic                    := '0';
+
+    signal data_frame_in_adar1_s  : frame_70word_24bit := (others => (others => '0'));
+    signal data_frame_in_adar2_s  : frame_70word_24bit := (others => (others => '0'));
+    signal data_frame_in_adar3_s  : frame_70word_24bit := (others => (others => '0'));
+    signal data_frame_in_adar4_s  : frame_70word_24bit := (others => (others => '0'));
+    
+    signal data_frame_out_1, data_frame_out_2, data_frame_out_3, data_frame_out_4 : frame_70word_8bit;
+    signal data_frame_o_v_1, data_frame_o_v_2, data_frame_o_v_3, data_frame_o_v_4 : std_logic;
+    signal busy_flag_1, busy_flag_2, busy_flag_3, busy_flag_4                     : std_logic;
+
+    signal word_count_adar1_s     : integer range 0 to 128 := 44;
+    signal word_count_adar2_s     : integer range 0 to 128 := 44;
+    signal word_count_adar3_s     : integer range 0 to 128 := 44;
+    signal word_count_adar4_s     : integer range 0 to 128 := 44;
+    
+    signal por_rst                : std_logic              := '0';
+    signal por_rst_cnt            : unsigned(23 downto 0)  := (others => '0');
+
+begin 
+
+    ------------------------------------------------------------------
+    -- Top-Level Static Power & Enable Driver Control Assignments
+    ------------------------------------------------------------------
+    FPGA_EN_28NV_DC_DC7149_1 <= '1';
+    FPGA_3_3v_1              <= '1';
+    PA_ON_1_1                <= '1';
+    PA_ON_2_1                <= '0';
+    PA_ON_3_1                <= '0';
+    PA_ON_4_1                <= '0';
+
+    RX_EN_ADAR_1_1           <= '1';
+    RX_EN_ADAR_2_1           <= '1';
+    RX_EN_ADAR_5_1           <= '1';
+    RX_EN_ADAR_6_1           <= '1';
+    RX_EN_ADAR_3_1           <= '1';
+    RX_EN_ADAR_4_1           <= '1';
+    RX_EN_ADAR_7_1           <= '1';
+    RX_EN_ADAR_8_1           <= '1';
+    RX_EN_ADAR_9_1           <= '1';
+    RX_EN_ADAR_10_1          <= '1';
+    RX_EN_ADAR_11_1          <= '1';
+    RX_EN_ADAR_12_1          <= '1';
+    RX_EN_ADAR_13_1          <= '1';
+    RX_EN_ADAR_14_1          <= '1';
+    RX_EN_ADAR_15_1          <= '1';
+    RX_EN_ADAR_16_1          <= '1';
+
+    CMD_TYPE_NOP             <= CMD_TYPE_NOP_S;
+    STATUS_TYPE              <= STATUS_TYPE_S;
+    FLASH_CMD                <= FLASH_CMD_S;
+    FLASH_INPUT_FRAME        <= FLASH_INPUT_FRAME_S;
+
+    FPGA_SPI_BUFF_CTRL_G1_1  <= '0';
+    FPGA_SPI_BUFF_CTRL_G2_1  <= '0';
+    FPGA_SPI_BUFF_CTRL_G3_1  <= '0';
+    FPGA_SPI_BUFF_CTRL_G4_1  <= '0';
+
+    DC_DC_Control_Buffer_1   <= '1';
+    BUFF_ENABLE_TX_TR_SW_1   <= '1';
+    FPGA_EN_n5V_DC_DC7149_1  <= '1';
+    FPGA_TX_EN_G1_G2_1       <= '1';
+    FPGA_RX_EN_G1_G2_1       <= '0';
+    FPGA_RX_EN_G3_G4_1       <= '0';
+
+    ------------------------------------------------------------------
+    -- Dynamic T/R & External Trigger Routing (Concurrent Mux)
+    ------------------------------------------------------------------
+    -- Pass INT_TRP_I to TR pins ONLY during TX Mode (0x03); hold 0 in RX (0x02) & Init (0x00)
+    FPGA_TR_ADAR1            <= INT_TRP_I when (CMD_TYPE = X"03") else '0';
+    FPGA_TR_ADAR2            <= INT_TRP_I when (CMD_TYPE = X"03") else '0';
+    FPGA_TR_ADAR3            <= INT_TRP_I when (CMD_TYPE = X"03") else '0';
+    FPGA_TR_ADAR4            <= INT_TRP_I when (CMD_TYPE = X"03") else '0';
+
+    -- Pass INT_TRP_I directly to hardware latch pins
+    FPGA_TX_LOAD_ADAR1       <= INT_TRP_I;
+    FPGA_RX_LOAD_ADAR1       <= INT_TRP_I;
+    FPGA_TX_LOAD_ADAR2       <= INT_TRP_I;
+    FPGA_RX_LOAD_ADAR2       <= INT_TRP_I;
+    FPGA_TX_LOAD_ADAR3       <= INT_TRP_I;
+    FPGA_RX_LOAD_ADAR3       <= INT_TRP_I;
+    FPGA_TX_LOAD_ADAR4       <= INT_TRP_I;
+    FPGA_RX_LOAD_ADAR4       <= INT_TRP_I;
+
+    -- T/R Switch Control
+    TR_SW_G1_1               <= '1' when (CMD_TYPE = X"03") else '0';
+    TR_SW_G2_1               <= '1' when (CMD_TYPE = X"03") else '0';
+    TR_SW_G3_1               <= '1' when (CMD_TYPE = X"03") else '0';
+    TR_SW_G4_1               <= '1' when (CMD_TYPE = X"03") else '0';
+
+    ------------------------------------------------------------------
+    -- 4 SPI Controller Instantiations
+    ------------------------------------------------------------------
+    adar1_spi_ctrl_inst: spi_wrap 
+        port map(
+            reset           => SYS_RESET_I,
+            CLK_50MHz_I     => CLK_50MHz_I,
+            data_frame_in   => data_frame_in_adar1_s,
+            word_count      => word_count_adar1_s,
+            data_in_flag    => data_adar_flag_d1,
+            data_frame_out  => data_frame_out_1,
+            data_frame_o_v  => data_frame_o_v_1,
+            busy_flag       => busy_flag_1,
+            sdo             => SDO_ADAR1_I,
+            sdio            => SDIO_ADAR1_IO,
+            sclk            => SCLK_ADAR1_O,
+            cs              => CSB_ADAR1_O
+        );
+
+    adar2_spi_ctrl_inst: spi_wrap 
+        port map(
+            reset           => SYS_RESET_I,
+            CLK_50MHz_I     => CLK_50MHz_I,
+            data_frame_in   => data_frame_in_adar2_s,
+            word_count      => word_count_adar2_s,
+            data_in_flag    => data_adar_flag_d1,
+            data_frame_out  => data_frame_out_2,
+            data_frame_o_v  => data_frame_o_v_2,
+            busy_flag       => busy_flag_2,
+            sdo             => SDO_ADAR2_I,
+            sdio            => SDIO_ADAR2_IO,
+            sclk            => SCLK_ADAR2_O,
+            cs              => CSB_ADAR2_O
+        );
+
+    adar3_spi_ctrl_inst: spi_wrap 
+        port map(
+            reset           => SYS_RESET_I,
+            CLK_50MHz_I     => CLK_50MHz_I,
+            data_frame_in   => data_frame_in_adar3_s,
+            word_count      => word_count_adar3_s,
+            data_in_flag    => data_adar_flag_d1,
+            data_frame_out  => data_frame_out_3,
+            data_frame_o_v  => data_frame_o_v_3,
+            busy_flag       => busy_flag_3,
+            sdo             => SDO_ADAR3_I,
+            sdio            => SDIO_ADAR3_IO,
+            sclk            => SCLK_ADAR3_O,
+            cs              => CSB_ADAR3_O
+        );
+
+    adar4_spi_ctrl_inst: spi_wrap 
+        port map(
+            reset           => SYS_RESET_I,
+            CLK_50MHz_I     => CLK_50MHz_I,
+            data_frame_in   => data_frame_in_adar4_s,
+            word_count      => word_count_adar4_s,
+            data_in_flag    => data_adar_flag_d1,
+            data_frame_out  => data_frame_out_4,
+            data_frame_o_v  => data_frame_o_v_4,
+            busy_flag       => busy_flag_4,
+            sdo             => SDO_ADAR4_I,
+            sdio            => SDIO_ADAR4_IO,
+            sclk            => SCLK_ADAR4_O,
+            cs              => CSB_ADAR4_O
+        );
+
+    ------------------------------------------------------------------
+    -- Command Trigger & Pipeline Process
+    ------------------------------------------------------------------
+    process(CLK_50MHz_I, SYS_RESET_I) 
+    begin 
+        if (SYS_RESET_I = '1') then
+            CMD_TYPE            <= X"00";
+            CHANNEL_SEL         <= X"00";
+            CMD_TYPE_NOP_S      <= X"00";
+            STATUS_TYPE_S       <= X"0";
+            FLASH_CMD_S         <= X"00";
+            FLASH_INPUT_FRAME_S <= (others => (others => '0'));
+            data_adar_flag_raw  <= '0';
+            data_adar_flag_d1   <= '0';
+        elsif rising_edge(CLK_50MHz_I) then
+            data_adar_flag_raw <= '0';
+            
+            -- Combine UART trigger flag and Power-On-Reset flag cleanly without multiple drivers
+            data_adar_flag_d1  <= data_adar_flag_raw or por_flag_raw;
+
+            if FLAG_FRAME = '1' then
+                CMD_TYPE    <= RX_FRAME(2);
+                CHANNEL_SEL <= RX_FRAME(5);
+
+                if (RX_FRAME(2) >= X"00" and RX_FRAME(2) <= X"05") then
+                    data_adar_flag_raw <= '1'; 
+
+                elsif (RX_FRAME(2) = X"08") then
+                    CMD_TYPE_NOP_S <= RX_FRAME(2);
+                    STATUS_TYPE_S  <= RX_FRAME(5)(3 downto 0);
+
+                elsif (RX_FRAME(2) = X"0A") then
+                    FLASH_CMD_S <= RX_FRAME(2);
+                    for i in 0 to 9 loop
+                        FLASH_INPUT_FRAME_S(i) <= RX_FRAME(i); 
+                    end loop;
+                end if;
+            end if;
+        end if;
+    end process;
+
+    ------------------------------------------------------------------
+    -- Main SPI Frame Construction Process
+    ------------------------------------------------------------------
+    process(CLK_50MHz_I, SYS_RESET_I) 
+    begin
+        if (SYS_RESET_I = '1') then
+            data_frame_in_adar1_s <= (others => X"000000");
+            data_frame_in_adar2_s <= (others => X"000000");
+            data_frame_in_adar3_s <= (others => X"000000");
+            data_frame_in_adar4_s <= (others => X"000000");
+            word_count_adar1_s    <= 44;
+            word_count_adar2_s    <= 44;
+            word_count_adar3_s    <= 44;
+            word_count_adar4_s    <= 44;
+
+        elsif rising_edge(CLK_50MHz_I) then
+            if (FLAG_FRAME = '1') then
+                case RX_FRAME(2) is
+
+                    ------------------------------------------------------------------
+                    -- WHEN 0x00: GLOBAL INITIALIZATION (OPTIMIZED ROM LOOP)
+                    ------------------------------------------------------------------
+                    when X"00" =>
+                        if (RX_FRAME(5) = X"FF") then
+                            for chip in 0 to 3 loop
+                                for reg in 0 to 10 loop
+                                    data_frame_in_adar1_s(chip * 11 + reg) <= '0' & std_logic_vector(to_unsigned(chip, 2)) & "00000" & ADAR_INIT_ROM(reg);
+                                    data_frame_in_adar2_s(chip * 11 + reg) <= '0' & std_logic_vector(to_unsigned(chip, 2)) & "00000" & ADAR_INIT_ROM(reg);
+                                    data_frame_in_adar3_s(chip * 11 + reg) <= '0' & std_logic_vector(to_unsigned(chip, 2)) & "00000" & ADAR_INIT_ROM(reg);
+                                    data_frame_in_adar4_s(chip * 11 + reg) <= '0' & std_logic_vector(to_unsigned(chip, 2)) & "00000" & ADAR_INIT_ROM(reg);
+                                end loop;
+                            end loop;
+
+                            word_count_adar1_s <= 44;
+                            word_count_adar2_s <= 44;
+                            word_count_adar3_s <= 44;
+                            word_count_adar4_s <= 44;
+                        end if;
+
+                    ------------------------------------------------------------------
+                    -- WHEN 0x02: RX CALIBRATION & CHANNEL SELECT
+                    ------------------------------------------------------------------
+                    when X"02" =>
+                        data_frame_in_adar1_s(0) <= "0" & "00" & "00000" & x"3141"; -- TR Pin Ctrl (RX Active)
+                        data_frame_in_adar1_s(1) <= "0" & "00" & "00000" & x"3408"; -- RX Bias 1 ON
+                        data_frame_in_adar1_s(2) <= "0" & "00" & "00000" & x"3555"; -- RX Bias 2 (LNA) ON
+                        data_frame_in_adar1_s(3) <= "0" & "00" & "00000" & x"3600"; -- TX Bias 1 OFF
+                        data_frame_in_adar1_s(4) <= "0" & "00" & "00000" & x"3700"; -- TX Bias 2 OFF
+                        data_frame_in_adar1_s(5) <= "0" & "00" & "00000" & x"2F00"; -- Disable TX Paths
+
+                        if (RX_FRAME(5) = X"00") then     -- RX Channel 1
+                            data_frame_in_adar1_s(6) <= "0" & "00" & "00000" & x"2E41";
+                        elsif (RX_FRAME(5) = X"01") then  -- RX Channel 2
+                            data_frame_in_adar1_s(6) <= "0" & "00" & "00000" & x"2E42";
+                        elsif (RX_FRAME(5) = X"08") then  -- RX Channel 3
+                            data_frame_in_adar1_s(6) <= "0" & "00" & "00000" & x"2E44";
+                        elsif (RX_FRAME(5) = X"09") then  -- RX Channel 4
+                            data_frame_in_adar1_s(6) <= "0" & "00" & "00000" & x"2E48";
+                        elsif (RX_FRAME(5) = X"FF") then  -- Global RX (All Channels)
+                            data_frame_in_adar1_s(6) <= "0" & "00" & "00000" & x"2E4F";
+                        end if;
+
+                        data_frame_in_adar1_s(7) <= "0" & "00" & "00000" & x"2802"; -- RX Latch
+
+                        data_frame_in_adar2_s <= data_frame_in_adar1_s;
+                        data_frame_in_adar3_s <= data_frame_in_adar1_s;
+                        data_frame_in_adar4_s <= data_frame_in_adar1_s;
+
+                        word_count_adar1_s <= 8;
+                        word_count_adar2_s <= 8;
+                        word_count_adar3_s <= 8;
+                        word_count_adar4_s <= 8;
+
+                    ------------------------------------------------------------------
+                    -- WHEN 0x03: TX CALIBRATION & CHANNEL SELECT
+                    ------------------------------------------------------------------
+                    when X"03" =>
+                        data_frame_in_adar1_s(0) <= "0" & "00" & "00000" & x"3104"; 
+                        data_frame_in_adar1_s(2) <= "0" & "00" & "00000" & x"362D"; 
+                        data_frame_in_adar1_s(3) <= "0" & "00" & "00000" & x"3706"; 
+
+                        if (RX_FRAME(5) = X"00") then     -- TX Channel 1
+                            data_frame_in_adar1_s(1) <= "0" & "00" & "00000" & x"2F47"; 
+                            data_frame_in_adar1_s(4) <= "0" & "00" & "00000" & x"2979"; 
+                            data_frame_in_adar1_s(5) <= "0" & "00" & "00000" & x"2AFF"; 
+                            data_frame_in_adar1_s(6) <= "0" & "00" & "00000" & x"2BFF"; 
+                            data_frame_in_adar1_s(7) <= "0" & "00" & "00000" & x"2CFF"; 
+
+                        elsif (RX_FRAME(5) = X"01") then  -- TX Channel 2
+                            data_frame_in_adar1_s(1) <= "0" & "00" & "00000" & x"2F27"; 
+                            data_frame_in_adar1_s(4) <= "0" & "00" & "00000" & x"29FF"; 
+                            data_frame_in_adar1_s(5) <= "0" & "00" & "00000" & x"2A79"; 
+                            data_frame_in_adar1_s(6) <= "0" & "00" & "00000" & x"2BFF"; 
+                            data_frame_in_adar1_s(7) <= "0" & "00" & "00000" & x"2CFF"; 
+
+                        elsif (RX_FRAME(5) = X"08") then  -- TX Channel 3
+                            data_frame_in_adar1_s(1) <= "0" & "00" & "00000" & x"2F17"; 
+                            data_frame_in_adar1_s(4) <= "0" & "00" & "00000" & x"29FF"; 
+                            data_frame_in_adar1_s(5) <= "0" & "00" & "00000" & x"2AFF"; 
+                            data_frame_in_adar1_s(6) <= "0" & "00" & "00000" & x"2B79"; 
+                            data_frame_in_adar1_s(7) <= "0" & "00" & "00000" & x"2CFF"; 
+
+                        elsif (RX_FRAME(5) = X"09") then  -- TX Channel 4
+                            data_frame_in_adar1_s(1) <= "0" & "00" & "00000" & x"2F0F"; 
+                            data_frame_in_adar1_s(4) <= "0" & "00" & "00000" & x"29FF"; 
+                            data_frame_in_adar1_s(5) <= "0" & "00" & "00000" & x"2AFF"; 
+                            data_frame_in_adar1_s(6) <= "0" & "00" & "00000" & x"2BFF"; 
+                            data_frame_in_adar1_s(7) <= "0" & "00" & "00000" & x"2C79"; 
+                        end if;
+
+                        data_frame_in_adar1_s(8) <= "0" & "00" & "00000" & x"2801"; -- TX Latch
+
+                        data_frame_in_adar2_s <= data_frame_in_adar1_s;
+                        data_frame_in_adar3_s <= data_frame_in_adar1_s;
+                        data_frame_in_adar4_s <= data_frame_in_adar1_s;
+
+                        word_count_adar1_s <= 9;
+                        word_count_adar2_s <= 9;
+                        word_count_adar3_s <= 9;
+                        word_count_adar4_s <= 9;
+
+                    when others =>
+                        null;
+                end case;
+            end if;
+        end if;
+    end process;
+
+    ------------------------------------------------------------------
+    -- Power-On Reset Generation (CLK_5MHz_I Domain)
+    ------------------------------------------------------------------
+    process(CLK_5MHz_I) 
+    begin
+        if rising_edge(CLK_5MHz_I) then
+            if por_rst_cnt > x"7A120" then
+                por_rst <= '0';
+            else
+                por_rst     <= '1';           
+                por_rst_cnt <= por_rst_cnt + 1;           
+            end if;
+        end if;
+    end process;
+
+    ------------------------------------------------------------------
+    -- Auto-Init Auto-Trigger Pulse (CLK_50MHz_I Domain)
+    ------------------------------------------------------------------
+    process(CLK_50MHz_I) 
+    begin
+        if por_rst = '1' then
+            adar_rst_cnt <= (others => '0');
+            por_flag_raw <= '0';
+        elsif rising_edge(CLK_50MHz_I) then
+            if adar_rst_cnt >= x"04C4B40" then
+                adar_rst_cnt <= x"04C4B40";
+            else
+                adar_rst_cnt <= adar_rst_cnt + 1;
+            end if;
+
+            if adar_rst_cnt = x"0000002" then   
+                por_flag_raw <= '1';
+            else
+                por_flag_raw <= '0';                    
+            end if;
+        end if;
+    end process;
+
+end architecture architecture_Mode_decoder;
