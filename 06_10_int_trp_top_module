@@ -1,0 +1,231 @@
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+
+library work;
+use work.frame_type.all;
+
+entity top_module is
+port (
+    ------------------------------------------------------------------
+    -- 1. System Clocks & Resets (From Board Oscillator / MMCM)
+    ------------------------------------------------------------------
+    CLK_50MHz_I             : in  std_logic;
+    CLK_5MHz_I              : in  std_logic;
+    CLK_10MHZ_I             : in  std_logic;
+    SYS_RESET_I             : in  std_logic;
+
+    ------------------------------------------------------------------
+    -- 2. External Pulse / Timing Input Trigger Pin
+    ------------------------------------------------------------------
+    INT_TRP_IN              : in  std_logic;  -- Connects to external SMA/generator pin
+
+    ------------------------------------------------------------------
+    -- 3. System UART / Frame Interface
+    ------------------------------------------------------------------
+    RX_FRAME_TOP            : in  frame_50word_8bit;
+    FLAG_FRAME_TOP          : in  std_logic;
+
+    ------------------------------------------------------------------
+    -- 4. SPI Bus Interface Ports (Connected to ADAR1000 ICs)
+    ------------------------------------------------------------------
+    SCLK_ADAR1_O            : out std_logic;
+    CSB_ADAR1_O             : out std_logic;
+    SDO_ADAR1_I             : in  std_logic;
+    SDIO_ADAR1_IO           : out std_logic;
+
+    SCLK_ADAR2_O            : out std_logic;
+    CSB_ADAR2_O             : out std_logic;
+    SDO_ADAR2_I             : in  std_logic;
+    SDIO_ADAR2_IO           : out std_logic;
+
+    SCLK_ADAR3_O            : out std_logic;
+    CSB_ADAR3_O             : out std_logic;
+    SDO_ADAR3_I             : in  std_logic;
+    SDIO_ADAR3_IO           : out std_logic;
+
+    SCLK_ADAR4_O            : out std_logic;
+    CSB_ADAR4_O             : out std_logic;
+    SDO_ADAR4_I             : in  std_logic;
+    SDIO_ADAR4_IO           : out std_logic;
+
+    ------------------------------------------------------------------
+    -- 5. T/R Control & Latch Output Lines (To Board Drivers)
+    ------------------------------------------------------------------
+    FPGA_TR_ADAR1_O         : out std_logic;
+    FPGA_TR_ADAR2_O         : out std_logic;
+    FPGA_TR_ADAR3_O         : out std_logic;
+    FPGA_TR_ADAR4_O         : out std_logic;
+
+    FPGA_TX_LOAD_ADAR1_O    : out std_logic;
+    FPGA_RX_LOAD_ADAR1_O    : out std_logic;
+    FPGA_TX_LOAD_ADAR2_O    : out std_logic;
+    FPGA_RX_LOAD_ADAR2_O    : out std_logic;
+    FPGA_TX_LOAD_ADAR3_O    : out std_logic;
+    FPGA_RX_LOAD_ADAR3_O    : out std_logic;
+    FPGA_TX_LOAD_ADAR4_O    : out std_logic;
+    FPGA_RX_LOAD_ADAR4_O    : out std_logic;
+
+    TR_SW_G1_1_O            : out std_logic;
+    TR_SW_G2_1_O            : out std_logic;
+    TR_SW_G3_1_O            : out std_logic;
+    TR_SW_G4_1_O            : out std_logic;
+
+    ------------------------------------------------------------------
+    -- 6. DC-DC Converters & Power Amplifier Control Ports
+    ------------------------------------------------------------------
+    FPGA_SPI_BUFF_CTRL_G1_1 : out std_logic;
+    FPGA_SPI_BUFF_CTRL_G2_1 : out std_logic;
+    FPGA_SPI_BUFF_CTRL_G3_1 : out std_logic;
+    FPGA_SPI_BUFF_CTRL_G4_1 : out std_logic;
+
+    DC_DC_Control_Buffer_1  : out std_logic;
+    BUFF_ENABLE_TX_TR_SW_1  : out std_logic;
+    FPGA_EN_n5V_DC_DC7149_1 : out std_logic;
+    FPGA_TX_EN_G1_G2_1      : out std_logic;
+    FPGA_TX_EN_G3_G4_1      : out std_logic;
+
+    FPGA_EN_28NV_DC_DC7149_1: out std_logic;
+    FPGA_3_3v_1             : out std_logic;
+
+    PA_ON_1_1               : out std_logic;
+    PA_ON_2_1               : out std_logic;
+    PA_ON_3_1               : out std_logic;
+    PA_ON_4_1               : out std_logic;
+
+    FPGA_RX_EN_G1_G2_1      : out std_logic;
+    FPGA_RX_EN_G3_G4_1      : out std_logic;
+
+    RX_EN_ADAR_1_1          : out std_logic;
+    RX_EN_ADAR_2_1          : out std_logic;
+    RX_EN_ADAR_5_1          : out std_logic;
+    RX_EN_ADAR_6_1          : out std_logic;
+    RX_EN_ADAR_3_1          : out std_logic;
+    RX_EN_ADAR_4_1          : out std_logic;
+    RX_EN_ADAR_7_1          : out std_logic;
+    RX_EN_ADAR_8_1          : out std_logic;
+    RX_EN_ADAR_9_1          : out std_logic;
+    RX_EN_ADAR_10_1         : out std_logic;
+    RX_EN_ADAR_11_1         : out std_logic;
+    RX_EN_ADAR_12_1         : out std_logic;
+    RX_EN_ADAR_13_1         : out std_logic;
+    RX_EN_ADAR_14_1         : out std_logic;
+    RX_EN_ADAR_15_1         : out std_logic;
+    RX_EN_ADAR_16_1         : out std_logic
+);
+end entity top_module;
+
+architecture rtl of top_module is
+
+begin
+
+    ------------------------------------------------------------------
+    -- Instantiate Mode_decoder
+    ------------------------------------------------------------------
+    u_Mode_decoder : entity work.Mode_decoder
+        port map (
+            -- System Clocks & Reset
+            CLK_50MHz_I             => CLK_50MHz_I,
+            CLK_5MHz_I              => CLK_5MHz_I,
+            CLK_10MHZ_I             => CLK_10MHZ_I,
+            SYS_RESET_I             => SYS_RESET_I,
+
+            -- External Input Pulse
+            INT_TRP_I               => INT_TRP_IN,
+
+            -- UART Input Frame
+            RX_FRAME                => RX_FRAME_TOP,
+            FLAG_FRAME              => FLAG_FRAME_TOP,
+
+            -- Unused status outputs (open if not routed externally)
+            CMD_TYPE_NOP            => open,
+            STATUS_TYPE             => open,
+            FLASH_CMD               => open,
+            FLASH_INPUT_FRAME       => open,
+
+            -- SPI Bus 1
+            SCLK_ADAR1_O            => SCLK_ADAR1_O,
+            CSB_ADAR1_O             => CSB_ADAR1_O,
+            SDO_ADAR1_I             => SDO_ADAR1_I,
+            SDIO_ADAR1_IO           => SDIO_ADAR1_IO,
+
+            -- SPI Bus 2
+            SCLK_ADAR2_O            => SCLK_ADAR2_O,
+            CSB_ADAR2_O             => CSB_ADAR2_O,
+            SDO_ADAR2_I             => SDO_ADAR2_I,
+            SDIO_ADAR2_IO           => SDIO_ADAR2_IO,
+
+            -- SPI Bus 3
+            SCLK_ADAR3_O            => SCLK_ADAR3_O,
+            CSB_ADAR3_O             => CSB_ADAR3_O,
+            SDO_ADAR3_I             => SDO_ADAR3_I,
+            SDIO_ADAR3_IO           => SDIO_ADAR3_IO,
+
+            -- SPI Bus 4
+            SCLK_ADAR4_O            => SCLK_ADAR4_O,
+            CSB_ADAR4_O             => CSB_ADAR4_O,
+            SDO_ADAR4_I             => SDO_ADAR4_I,
+            SDIO_ADAR4_IO           => SDIO_ADAR4_IO,
+
+            -- T/R Signals mapped to top-level ports
+            FPGA_TR_ADAR1           => FPGA_TR_ADAR1_O,
+            FPGA_TR_ADAR2           => FPGA_TR_ADAR2_O,
+            FPGA_TR_ADAR3           => FPGA_TR_ADAR3_O,
+            FPGA_TR_ADAR4           => FPGA_TR_ADAR4_O,
+
+            FPGA_TX_LOAD_ADAR1      => FPGA_TX_LOAD_ADAR1_O,
+            FPGA_RX_LOAD_ADAR1      => FPGA_RX_LOAD_ADAR1_O,
+            FPGA_TX_LOAD_ADAR2      => FPGA_TX_LOAD_ADAR2_O,
+            FPGA_RX_LOAD_ADAR2      => FPGA_RX_LOAD_ADAR2_O,
+            FPGA_TX_LOAD_ADAR3      => FPGA_TX_LOAD_ADAR3_O,
+            FPGA_RX_LOAD_ADAR3      => FPGA_RX_LOAD_ADAR3_O,
+            FPGA_TX_LOAD_ADAR4      => FPGA_TX_LOAD_ADAR4_O,
+            FPGA_RX_LOAD_ADAR4      => FPGA_RX_LOAD_ADAR4_O,
+
+            TR_SW_G1_1              => TR_SW_G1_1_O,
+            TR_SW_G2_1              => TR_SW_G2_1_O,
+            TR_SW_G3_1              => TR_SW_G3_1_O,
+            TR_SW_G4_1              => TR_SW_G4_1_O,
+
+            -- Board enables and buffers
+            FPGA_SPI_BUFF_CTRL_G1_1 => FPGA_SPI_BUFF_CTRL_G1_1,
+            FPGA_SPI_BUFF_CTRL_G2_1 => FPGA_SPI_BUFF_CTRL_G2_1,
+            FPGA_SPI_BUFF_CTRL_G3_1 => FPGA_SPI_BUFF_CTRL_G3_1,
+            FPGA_SPI_BUFF_CTRL_G4_1 => FPGA_SPI_BUFF_CTRL_G4_1,
+
+            DC_DC_Control_Buffer_1  => DC_DC_Control_Buffer_1,
+            BUFF_ENABLE_TX_TR_SW_1  => BUFF_ENABLE_TX_TR_SW_1,
+            FPGA_EN_n5V_DC_DC7149_1 => FPGA_EN_n5V_DC_DC7149_1,
+            FPGA_TX_EN_G1_G2_1      => FPGA_TX_EN_G1_G2_1,
+            FPGA_TX_EN_G3_G4_1      => FPGA_TX_EN_G3_G4_1,
+
+            FPGA_EN_28NV_DC_DC7149_1=> FPGA_EN_28NV_DC_DC7149_1,
+            FPGA_3_3v_1             => FPGA_3_3v_1,
+
+            PA_ON_1_1               => PA_ON_1_1,
+            PA_ON_2_1               => PA_ON_2_1,
+            PA_ON_3_1               => PA_ON_3_1,
+            PA_ON_4_1               => PA_ON_4_1,
+
+            FPGA_RX_EN_G1_G2_1      => FPGA_RX_EN_G1_G2_1,
+            FPGA_RX_EN_G3_G4_1      => FPGA_RX_EN_G3_G4_1,
+
+            RX_EN_ADAR_1_1          => RX_EN_ADAR_1_1,
+            RX_EN_ADAR_2_1          => RX_EN_ADAR_2_1,
+            RX_EN_ADAR_5_1          => RX_EN_ADAR_5_1,
+            RX_EN_ADAR_6_1          => RX_EN_ADAR_6_1,
+            RX_EN_ADAR_3_1          => RX_EN_ADAR_3_1,
+            RX_EN_ADAR_4_1          => RX_EN_ADAR_4_1,
+            RX_EN_ADAR_7_1          => RX_EN_ADAR_7_1,
+            RX_EN_ADAR_8_1          => RX_EN_ADAR_8_1,
+            RX_EN_ADAR_9_1          => RX_EN_ADAR_9_1,
+            RX_EN_ADAR_10_1         => RX_EN_ADAR_10_1,
+            RX_EN_ADAR_11_1         => RX_EN_ADAR_11_1,
+            RX_EN_ADAR_12_1         => RX_EN_ADAR_12_1,
+            RX_EN_ADAR_13_1         => RX_EN_ADAR_13_1,
+            RX_EN_ADAR_14_1         => RX_EN_ADAR_14_1,
+            RX_EN_ADAR_15_1         => RX_EN_ADAR_15_1,
+            RX_EN_ADAR_16_1         => RX_EN_ADAR_16_1
+        );
+
+end architecture rtl;
