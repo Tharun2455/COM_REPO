@@ -1,0 +1,224 @@
+
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.std_logic_unsigned.all;
+use ieee.std_logic_arith.all;
+use ieee.numeric_std.all;
+use ieee.numeric_bit.all;
+
+library work;
+use work.frame_type.all;
+
+entity spi_wrap is
+    port (
+        reset           : in  std_logic;
+        CLK_50MHz_I      : in  std_logic;
+
+        data_frame_in   : in  frame_70word_24bit;
+        word_count      : in  integer range 0 to 128;
+        data_in_flag    : in  std_logic := '0';
+
+        data_frame_out  : out frame_70word_8bit;
+        data_frame_o_v  : out std_logic;
+        busy_flag       : out std_logic;
+
+        sdo             : in  std_logic;
+        sdio            : out std_logic;
+        sclk            : out std_logic;
+        cs              : out std_logic
+    );
+end spi_wrap;
+
+architecture Behavioral of spi_wrap is
+
+    component adar_spi_shift is
+        port (
+            clk        : in  std_logic;
+            reset      : in  std_logic;
+            en         : in  std_logic;
+            data_in    : in  std_logic_vector(23 downto 0);
+
+            data_out   : out std_logic_vector(7 downto 0);
+            data_out_v : out std_logic;
+            spi_busy   : out std_logic;
+
+            cs         : out std_logic;
+            sdi        : in  std_logic;
+            sdo        : out std_logic;
+            sck        : out std_logic
+        );
+    end component;
+
+    type spi_word is (
+        idle,
+        push_data,
+        spi_busy_delay,
+        spi_busy_check,
+        total_cnt_check,
+        end_state
+    );
+
+    signal word_state : spi_word := idle;
+
+    signal write_flag_s : std_logic := '0';
+    signal read_done_s  : std_logic := '0';
+
+    -- 70-word frame: valid indexes 0 to 69
+    signal word_count_s : integer range 0 to 70 := 0;
+    signal count_1      : integer range 0 to 69 := 0;
+
+    signal DATA_IN_s  : std_logic_vector(23 downto 0)
+                     := (others => '0');
+
+    signal DATA_out_s : std_logic_vector(7 downto 0)
+                     := (others => '0');
+
+    signal busy_flag_s : std_logic := '0';
+    signal spi_busy    : std_logic := '0';
+
+begin
+
+    inst_spi : adar_spi_shift
+        port map (
+            clk        => CLK_50MHz_I,
+            reset      => reset,
+            en         => write_flag_s,
+            data_in    => DATA_IN_s,
+
+            data_out   => DATA_out_s,
+            data_out_v => read_done_s,
+            spi_busy   => spi_busy,
+
+            cs         => cs,
+            sdi        => sdo,
+            sdo        => sdio,
+            sck        => sclk
+        );
+
+    word_transfer : process(CLK_50MHz_I)
+    begin
+
+        if rising_edge(CLK_50MHz_I) then
+
+            if reset = '1' then
+
+                word_count_s   <= 0;
+                count_1        <= 0;
+
+                DATA_IN_s      <= (others => '0');
+
+                write_flag_s   <= '0';
+                busy_flag_s    <= '0';
+                data_frame_o_v <= '0';
+
+                data_frame_out <= (others => (others => '0'));
+
+                word_state     <= idle;
+
+            else
+
+                -- Completion pulse defaults low
+                data_frame_o_v <= '0';
+
+                case word_state is
+
+                    when idle =>
+
+                        count_1      <= 0;
+                        write_flag_s <= '0';
+
+                        if data_in_flag = '1' then
+
+                            if (word_count > 0) and
+                               (word_count <= 70) then
+
+                                word_count_s <= word_count;
+                                busy_flag_s  <= '1';
+                                word_state   <= push_data;
+
+                            else
+
+                                word_count_s <= 0;
+                                busy_flag_s  <= '0';
+                                word_state   <= idle;
+
+                            end if;
+
+                        else
+
+                            busy_flag_s <= '0';
+                            word_state  <= idle;
+
+                        end if;
+
+                    when push_data =>
+
+                        DATA_IN_s    <= data_frame_in(count_1);
+                        write_flag_s <= '1';
+
+                        word_state <= spi_busy_delay;
+
+                    when spi_busy_delay =>
+
+                        write_flag_s <= '0';
+
+                        word_state <= spi_busy_check;
+
+                    when spi_busy_check =>
+
+                        -- Wait until the SPI response byte is valid
+                        if read_done_s = '1' then
+
+                            -- Capture the received byte
+                            data_frame_out(count_1) <= DATA_out_s;
+
+                            word_state <= total_cnt_check;
+
+                        else
+
+                            word_state <= spi_busy_check;
+
+                        end if;
+
+                    when total_cnt_check =>
+
+                        -- Transmit exactly word_count_s words
+                        -- For 56 words: indexes 0 through 55
+
+                        if count_1 < word_count_s - 1 then
+
+                            count_1    <= count_1 + 1;
+                            word_state <= push_data;
+
+                        else
+
+                            word_state <= end_state;
+
+                        end if;
+
+                    when end_state =>
+
+                        count_1        <= 0;
+                        write_flag_s   <= '0';
+
+                        busy_flag_s    <= '0';
+                        data_frame_o_v <= '1';
+
+                        word_state <= idle;
+
+                    when others =>
+
+                        word_state   <= idle;
+                        write_flag_s <= '0';
+                        busy_flag_s  <= '0';
+
+                end case;
+
+            end if;
+        end if;
+
+    end process;
+
+    busy_flag <= busy_flag_s;
+
+end Behavioral;
